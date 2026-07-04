@@ -122,8 +122,8 @@ where
 pub fn handle_input(app: &mut App, key: Key) {
     match &app.screen {
         Screen::List => match key {
-            Key::Up => app.navigate_up(),
-            Key::Down => app.navigate_down(),
+            Key::Up | Key::Char('k') => app.navigate_up(),
+            Key::Down | Key::Char('j') => app.navigate_down(),
             Key::Enter => app.select_commit(),
             Key::Char('q') => app.quit(),
             _ => {}
