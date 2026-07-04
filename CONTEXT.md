@@ -11,4 +11,4 @@ A git commit, identified by its abbreviated hash (7 chars), with an author, rela
 The primary view — a scrollable, selectable list of commits sorted chronologically (newest first).
 
 **Commit Detail**:
-An overlay shown when a commit is selected, displaying the full commit hash, author, date, commit body, and diff output.
+An overlay shown when a commit is selected, displaying the abbreviated hash (7 chars), author, date, commit body, and diff output.

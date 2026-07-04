@@ -7,8 +7,8 @@ Issues and PRDs for this repo live as markdown files in `.scratch/`.
 - One feature per directory: `.scratch/<feature-slug>/`
 - The PRD is `.scratch/<feature-slug>/PRD.md`
 - Implementation issues are `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`
-- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
-- Comments and conversation history append to the bottom of the file under a `## Comments` heading
+- Triage state is recorded as a `Status:` line near the top of each issue file, using the triage role strings from `triage-labels.md` (e.g. `needs-triage`, `ready-for-agent`).
+- *Note on Status vocabularies*: The triage system (above) uses `Status:` with values like `needs-triage`, `ready-for-agent`, etc. The `/wayfinder` system (below) also uses `Status:` but with values `claimed`/`resolved`. These are separate systems — the triage Status captures the evaluation state, while wayfinder Status tracks claim progress. A file may carry both meanings in different contexts. 
 
 ## When a skill says "publish to the issue tracker"
 

@@ -1,3 +1,8 @@
+---
+Status: Accepted
+Date: 2026-07-04
+---
+
 # Use gix (gitoxide) instead of shelling out to git CLI
 
 ratty reads commit history and diffs from a git repository. We chose the pure-Rust `gix` library over calling `git log` / `git show` via `std::process::Command`, even though the CLI approach is simpler and more familiar.
