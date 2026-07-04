@@ -7,7 +7,7 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use crate::app::{App, Screen};
+use crate::app::{AlertKind, App, Screen};
 
 /// Convert a hex colour string (e.g. "#89b4fa") to a ratatui Color.
 fn hex_color(hex: &str) -> Color {
@@ -40,6 +40,15 @@ pub fn render(frame: &mut Frame, app: &App) {
             render_detail_overlay(frame, app);
         }
         Screen::Error(msg) => render_error(frame, msg),
+        Screen::Alert(kind) => {
+            render_commit_list(frame, app, true);
+            render_alert_overlay(frame, app, kind);
+        }
+    }
+
+    // Transient footer notification (HEAD-change announcement).
+    if app.notification.is_some() {
+        render_notification(frame, app);
     }
 
     // Help overlay on top of everything else.
@@ -453,6 +462,12 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
                 ("Enter", "Quit"),
             ],
         ),
+        Screen::Alert(_) => (
+            "Alert",
+            &[
+                ("Enter / Esc", "Dismiss"),
+            ],
+        ),
         Screen::Loading => return, // help should never appear during loading
     };
 
@@ -479,6 +494,95 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
     let content = Paragraph::new(Text::from(lines))
         .style(Style::default().bg(bg_color));
     frame.render_widget(content, inner);
+}
+
+/// Render the commit-deletion alert overlay.
+pub fn render_alert_overlay(frame: &mut Frame, app: &App, kind: &AlertKind) {
+    let colors = &app.colors;
+    let area = frame.area();
+
+    // Background dimming
+    let dim_block = Block::default().style(Style::default().bg(Color::Black));
+    frame.render_widget(dim_block, area);
+
+    // Popup size
+    let popup_w = (area.width as f64 * 0.6).min(50.0).max(36.0) as u16;
+    let popup_h = 8;
+    let popup_x = (area.width - popup_w) / 2;
+    let popup_y = (area.height - popup_h) / 2;
+
+    let popup_area = Rect {
+        x: popup_x,
+        y: popup_y,
+        width: popup_w,
+        height: popup_h,
+    };
+
+    frame.render_widget(Clear, popup_area);
+
+    let border_color = hex_color(&colors.detail_border);
+    let bg_color = hex_color(&colors.detail_bg);
+    let overlay = Block::default()
+        .title(" ⚠ Commit Deleted ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color))
+        .style(Style::default().bg(bg_color));
+    let inner = overlay.inner(popup_area);
+    frame.render_widget(overlay, popup_area);
+
+    let value_style = Style::default().fg(hex_color(&colors.detail_value));
+    let dim_style = Style::default().fg(Color::DarkGray);
+
+    let msg = match kind {
+        AlertKind::CommitDeleted { oid } => {
+            let short = oid.chars().take(7).collect::<String>();
+            format!("Commit {} no longer exists in the repository.", short)
+        }
+    };
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    let msg_para = Paragraph::new(Line::from(Span::styled(msg, value_style)))
+        .alignment(Alignment::Center);
+    frame.render_widget(msg_para, layout[0]);
+
+    let hint = Paragraph::new(Line::from(Span::styled(
+        " [Enter / Esc] back to list ",
+        dim_style,
+    )))
+    .alignment(Alignment::Center);
+    frame.render_widget(hint, layout[1]);
+}
+
+/// Render a transient notification in the footer area.
+pub fn render_notification(frame: &mut Frame, app: &App) {
+    let colors = &app.colors;
+    let area = frame.area();
+    let notif = match &app.notification {
+        Some(n) => n,
+        None => return,
+    };
+
+    // Notification bar at the very bottom of the screen
+    let bar = Rect {
+        x: 0,
+        y: area.height.saturating_sub(1),
+        width: area.width,
+        height: 1,
+    };
+
+    let bg_color = hex_color(&colors.detail_border);
+    let notice = Paragraph::new(Line::from(Span::styled(
+        format!(" {} ", notif.message),
+        Style::default().fg(Color::Black).bg(bg_color),
+    )));
+    frame.render_widget(notice, bar);
 }
 
 /// Render the error screen.
