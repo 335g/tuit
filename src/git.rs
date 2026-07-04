@@ -1,9 +1,7 @@
 use anyhow::{Context, Result};
-use gix::bstr::ByteSlice;
 use gix::diff::Options;
 use gix::revision::walk::Sorting;
 use gix::traverse::commit::simple::CommitTimeOrder;
-use imara_diff::Sink;
 
 /// A single commit's summary data.
 #[derive(Clone, Debug)]
@@ -34,11 +32,11 @@ pub fn load_commits() -> Result<Vec<Commit>> {
     let repo = open_repo()?;
 
     // Resolve HEAD to a commit OID.
-    let head = repo.head().context("No HEAD reference found")?;
-    let head_id = head
-        .peel_to_commit_in_place()
-        .context("Failed to resolve HEAD to a commit")?
-        .id();
+    let mut head = repo.head().context("No HEAD reference found")?;
+    let head_id = match head.peel_to_commit_in_place() {
+        Ok(commit) => commit.id(),
+        Err(_) => anyhow::bail!("このリポジトリにはまだコミットがありません。"),
+    };
 
     // Walk commits newest-first.
     let walk = repo
@@ -58,16 +56,16 @@ pub fn load_commits() -> Result<Vec<Commit>> {
         let short_hash = oid_hex.chars().take(7).collect::<String>();
 
         let msg_ref = commit_obj.message().context("Failed to decode message")?;
-        let subject = msg_ref.title.trim_end().to_string();
+        let subject = msg_ref.title.to_string();
 
         let author = commit_obj.author().context("Failed to decode author")?;
         let author_name = author.name.to_string();
 
-        let time = commit_obj.committer()?.time;
-        let date_str = format_relative_time(time.seconds);
-                let _ = &date_str; // suppress unused
-                String::new() // placeholder — replaced above
-                /* the actual code is above */
+        let time_seconds = commit_obj
+            .committer()
+            .context("Failed to decode committer")?
+            .seconds();
+        let date_str = format_relative_time(time_seconds);
 
         commits.push(Commit {
             hash: short_hash,
@@ -100,7 +98,7 @@ pub fn load_diff(oid_hex: &str) -> Result<(String, String)> {
     let msg_ref = commit_obj.message().context("Failed to decode message")?;
     let body = msg_ref
         .body
-        .map(|b| b.trim_end().to_string())
+        .map(|b| b.to_string())
         .unwrap_or_default();
 
     // Get the commit tree.
@@ -152,14 +150,13 @@ fn build_diff(
                 relation: _,
                 id,
             } => {
-                let path = location.to_string_lossy();
+                let path = location.to_string();
                 out.push_str(&format!("diff --git a/dev/null b/{path}\n"));
                 out.push_str("--- /dev/null\n");
                 out.push_str(&format!("+++ b/{path}\n"));
 
                 if let Ok(blob) = repo.find_object(*id) {
-                    let data = blob.data.to_vec();
-                    let content = String::from_utf8_lossy(&data);
+                    let content = String::from_utf8_lossy(&blob.data);
                     let lines: Vec<&str> = content.lines().collect();
                     let n = if content.is_empty() {
                         0
@@ -182,14 +179,13 @@ fn build_diff(
                 relation: _,
                 id,
             } => {
-                let path = location.to_string_lossy();
+                let path = location.to_string();
                 out.push_str(&format!("diff --git a/{path} b/dev/null\n"));
                 out.push_str(&format!("--- a/{path}\n"));
                 out.push_str("+++ /dev/null\n");
 
                 if let Ok(blob) = repo.find_object(*id) {
-                    let data = blob.data.to_vec();
-                    let content = String::from_utf8_lossy(&data);
+                    let content = String::from_utf8_lossy(&blob.data);
                     let lines: Vec<&str> = content.lines().collect();
                     let n = if content.is_empty() {
                         0
@@ -213,7 +209,7 @@ fn build_diff(
                 entry_mode: _,
                 id,
             } => {
-                let path = location.to_string_lossy();
+                let path = location.to_string();
                 out.push_str(&format!("diff --git a/{path} b/{path}\n"));
                 out.push_str(&format!("--- a/{path}\n"));
                 out.push_str(&format!("+++ b/{path}\n"));
@@ -276,82 +272,19 @@ fn build_diff(
 /// Append a unified-diff hunk for the two text contents using imara-diff.
 fn append_unified_diff(out: &mut String, old: &str, new: &str) {
     use imara_diff::intern::InternedInput;
+    use imara_diff::UnifiedDiffBuilder;
     use imara_diff::{diff, Algorithm};
 
-    let old_lines: Vec<&str> = if old.is_empty() {
-        vec![]
-    } else if old.ends_with('\n') {
-        let mut v: Vec<&str> = old.lines().collect();
-        v.push("");
-        v
-    } else {
-        old.lines().collect()
-    };
-
-    let new_lines: Vec<&str> = if new.is_empty() {
-        vec![]
-    } else if new.ends_with('\n') {
-        let mut v: Vec<&str> = new.lines().collect();
-        v.push("");
-        v
-    } else {
-        new.lines().collect()
-    };
-
-    let input = InternedInput::new(&old_lines, &new_lines);
-    let mut collector = UnifiedDiffCollector {
-        out: String::new(),
-        old_lines: &old_lines,
-        new_lines: &new_lines,
-    };
-
-    diff(Algorithm::Histogram, &input, &mut collector);
-
-    if !collector.out.is_empty() {
-        out.push_str(&collector.out);
-    }
-}
-
-/// A Sink implementation that collects unified-diff hunks.
-struct UnifiedDiffCollector<'a> {
-    out: String,
-    old_lines: &'a [&'a str],
-    new_lines: &'a [&'a str],
-}
-
-impl imara_diff::Sink for UnifiedDiffCollector<'_> {
-    type Out = ();
-
-    fn process_change(&mut self, before: std::ops::Range<u32>, after: std::ops::Range<u32>) {
-        use std::fmt::Write;
-
-        let before_start = before.start + 1;
-        let before_len = before.end - before.start;
-        let after_start = after.start + 1;
-        let after_len = after.end - after.start;
-
-        let _ = write!(
-            &mut self.out,
-            "@@ -{},{} +{},{} @@\n",
-            before_start, before_len, after_start, after_len
-        );
-
-        // Write removed lines.
-        for i in before {
-            self.out.push('-');
-            self.out.push_str(self.old_lines[i as usize]);
-            self.out.push('\n');
-        }
-
-        // Write added lines.
-        for i in after {
-            self.out.push('+');
-            self.out.push_str(self.new_lines[i as usize]);
-            self.out.push('\n');
-        }
+    if old.is_empty() && new.is_empty() {
+        return;
     }
 
-    fn finish(self) -> Self::Out {}
+    let input = InternedInput::new(old, new);
+    let builder = UnifiedDiffBuilder::new(&input);
+    let result = diff(Algorithm::Histogram, &input, builder);
+    if !result.is_empty() {
+        out.push_str(&result);
+    }
 }
 
 /// Convert a Unix timestamp to a human-readable relative time string.

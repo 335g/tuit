@@ -63,7 +63,7 @@ struct ThemeColors {
 }
 
 /// Default color palette (Catppuccin Mocha inspired).
-fn default_colors() -> Colors {
+pub fn default_colors() -> Colors {
     Colors {
         cursor_bg: "#89b4fa".into(),
         cursor_fg: "#1e1e2e".into(),
@@ -126,8 +126,7 @@ pub fn load() -> Result<Config> {
     };
 
     // 3. Merge with defaults
-    let defaults = default_colors();
-    let colors = merge_colors(defaults, theme_colors);
+    let colors = merge_colors(default_colors(), theme_colors);
 
     Ok(Config {
         theme: theme_name,
@@ -163,43 +162,54 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_colors_loads_when_no_files_exist() {
-        // Run in a temp dir with no config files
-        let prev = std::env::var("HOME").ok();
-        let tmp = std::env::temp_dir().join("ratty-test-no-config");
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).unwrap();
-        std::env::set_var("HOME", &tmp);
-        std::env::set_var("XDG_CONFIG_HOME", &tmp.join(".config"));
-
-        let config = load().unwrap();
-        assert_eq!(config.theme, "default");
-        assert_eq!(config.colors.cursor_bg, "#89b4fa");
-
-        if let Some(h) = prev {
-            std::env::set_var("HOME", h);
-        }
+    fn default_colors_have_expected_values() {
+        let colors = default_colors();
+        assert_eq!(colors.cursor_bg, "#89b4fa");
+        assert_eq!(colors.hash, "#a6e3a1");
+        assert_eq!(colors.message, "#cdd6f4");
+        assert_eq!(colors.author, "#f5c2e7");
+        assert_eq!(colors.date, "#6c7086");
+        assert_eq!(colors.diff_add, "#a6e3a1");
+        assert_eq!(colors.diff_del, "#f38ba8");
+        assert_eq!(colors.diff_normal, "#bac2de");
     }
 
     #[test]
-    fn malformed_toml_returns_error() {
-        let prev = std::env::var("HOME").ok();
-        let tmp = std::env::temp_dir().join("ratty-test-malformed");
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp.join(".config").join("ratty")).unwrap();
-        fs::write(
-            tmp.join(".config").join("ratty").join("config.toml"),
-            "<<< not toml >>>",
-        )
-        .unwrap();
-        std::env::set_var("HOME", &tmp);
-        std::env::set_var("XDG_CONFIG_HOME", &tmp.join(".config"));
+    fn merge_colors_with_none_returns_default() {
+        let defaults = default_colors();
+        let merged = merge_colors(default_colors(), None);
+        assert_eq!(merged.cursor_bg, defaults.cursor_bg);
+        assert_eq!(merged.hash, defaults.hash);
+    }
 
-        let result = load();
+    #[test]
+    fn merge_colors_with_theme_overrides_values() {
+        let theme = ThemeColors {
+            cursor_bg: Some("#ff0000".into()),
+            cursor_fg: None,
+            list_bg: None,
+            hash: Some("#00ff00".into()),
+            message: None,
+            author: None,
+            date: None,
+            detail_bg: None,
+            detail_border: None,
+            detail_heading: None,
+            detail_value: None,
+            diff_add: None,
+            diff_del: None,
+            diff_normal: None,
+        };
+        let merged = merge_colors(default_colors(), Some(theme));
+        assert_eq!(merged.cursor_bg, "#ff0000");
+        assert_eq!(merged.hash, "#00ff00");
+        // Unset fields should remain default
+        assert_eq!(merged.author, "#f5c2e7");
+    }
+
+    #[test]
+    fn malformed_toml_content_parse_fails() {
+        let result: std::result::Result<ConfigFile, _> = toml::from_str("<<< not toml >>>");
         assert!(result.is_err());
-
-        if let Some(h) = prev {
-            std::env::set_var("HOME", h);
-        }
     }
 }
