@@ -1,9 +1,9 @@
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Wrap},
-    Frame,
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
 use crate::app::{App, Screen};
@@ -47,11 +47,7 @@ fn render_loading(frame: &mut Frame) {
     let area = frame.area();
     let text = Paragraph::new("Loading commits…")
         .alignment(Alignment::Center)
-        .block(
-            Block::default()
-                .title(" ratty ")
-                .borders(Borders::ALL),
-        );
+        .block(Block::default().title(" ratty ").borders(Borders::ALL));
     frame.render_widget(text, area);
 }
 
@@ -73,10 +69,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     // --- Header ---
     let header_line = Line::from(vec![
         Span::styled(" ratty ", Style::default().bold()),
-        Span::styled(
-            "  q:quit",
-            Style::default().fg(Color::DarkGray),
-        ),
+        Span::styled("  q:quit", Style::default().fg(Color::DarkGray)),
     ]);
     let header = Paragraph::new(header_line);
     frame.render_widget(header, layout[0]);
@@ -99,7 +92,11 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
             // Truncate message to fit available width
             let max_msg_width = list_area.width.saturating_sub(35).max(5) as usize;
             let msg = if commit.message.len() > max_msg_width {
-                let mut s: String = commit.message.chars().take(max_msg_width.saturating_sub(1)).collect();
+                let mut s: String = commit
+                    .message
+                    .chars()
+                    .take(max_msg_width.saturating_sub(1))
+                    .collect();
                 s.push('…');
                 s
             } else {
@@ -135,29 +132,42 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                     Span::styled(format!(" {}", cursor), base),
                     Span::styled(format!(" {} ", commit.hash), base),
                     Span::styled(format!(" {} ", msg), base),
-                    Span::styled(
-                        format!(" {} {}", author_padded, date_str),
-                        base,
-                    ),
+                    Span::styled(format!(" {} {}", author_padded, date_str), base),
                 ])
             } else {
                 Line::from(vec![
                     Span::styled(format!(" {}", cursor), muted_fg),
                     Span::styled(
                         format!(" {} ", commit.hash),
-                        if grayed_out { muted_fg } else { fg(&colors.hash) },
+                        if grayed_out {
+                            muted_fg
+                        } else {
+                            fg(&colors.hash)
+                        },
                     ),
                     Span::styled(
                         format!(" {} ", msg),
-                        if grayed_out { muted_fg } else { fg(&colors.message) },
+                        if grayed_out {
+                            muted_fg
+                        } else {
+                            fg(&colors.message)
+                        },
                     ),
                     Span::styled(
                         format!(" {}", author_padded),
-                        if grayed_out { muted_fg } else { fg(&colors.author) },
+                        if grayed_out {
+                            muted_fg
+                        } else {
+                            fg(&colors.author)
+                        },
                     ),
                     Span::styled(
                         format!(" {}", date_str),
-                        if grayed_out { muted_fg } else { fg(&colors.date) },
+                        if grayed_out {
+                            muted_fg
+                        } else {
+                            fg(&colors.date)
+                        },
                     ),
                 ])
             }
@@ -206,6 +216,9 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     // Background dimming
     let dim_block = Block::default().style(Style::default().bg(Color::Black));
     frame.render_widget(dim_block, area);
+
+    // Clear the popup area so the commit list text doesn't show through
+    frame.render_widget(Clear, overlay_area);
 
     // Overlay border
     let border_color = hex_color(&colors.detail_border);
@@ -320,9 +333,7 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
 pub fn render_error(frame: &mut Frame, msg: &str) {
     let area = frame.area();
 
-    let block = Block::default()
-        .title(" ratty ")
-        .borders(Borders::ALL);
+    let block = Block::default().title(" ratty ").borders(Borders::ALL);
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -340,9 +351,7 @@ pub fn render_error(frame: &mut Frame, msg: &str) {
     // Error icon
     let icon = Paragraph::new(Line::from(Span::styled(
         "  ⚠  Error  ",
-        Style::default()
-            .fg(Color::Red)
-            .add_modifier(Modifier::BOLD),
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
     )))
     .alignment(Alignment::Center);
     frame.render_widget(icon, layout[0]);
