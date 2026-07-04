@@ -5,6 +5,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, Screen};
 
@@ -245,11 +246,11 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     let showed_all_body = body_count <= 8;
     let wrap_width = inner.width.max(1) as usize;
 
-    // Rough estimate of how many visual rows a line takes when wrapped.
+    // How many visual rows a line takes when wrapped (uses Unicode display width).
     let wrap_rows = |text: &str| -> u16 {
         let w = wrap_width.max(1);
-        let vis = text.chars().count();
-        if vis == 0 { 1 } else { ((vis + w - 1) / w) as u16 }
+        let vis = text.width();
+        if vis == 0 { 1 } else { vis.div_ceil(w) as u16 }
     };
 
     let mut msg_height = wrap_rows(&commit.message); // subject line (may wrap)
