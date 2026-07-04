@@ -27,6 +27,8 @@ pub struct App {
     pub detail_scroll: usize,
     /// Height of the scrollable content area (updated by render for page-scroll calculations).
     pub detail_content_height: Cell<usize>,
+    /// Whether the keybindings help overlay is shown.
+    pub show_help: bool,
 }
 
 impl App {
@@ -41,6 +43,7 @@ impl App {
             should_quit: false,
             detail_scroll: 0,
             detail_content_height: Cell::new(0),
+            show_help: false,
         }
     }
 
