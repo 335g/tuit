@@ -2,12 +2,11 @@ name: ratty
 version: 1.0.0
 description: APM project for ratty
 author: Yoshiki Kudo
-# Deploy skills to .agents/skills/ (readable by pi)
 targets:
-  - agent-skills
-
+- agent-skills
 dependencies:
-  apm: []
+  apm:
+  - mattpocock/skills
   mcp: []
 includes: auto
 scripts: {}
