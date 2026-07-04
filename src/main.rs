@@ -132,8 +132,8 @@ pub fn handle_input(app: &mut App, key: Key) {
             Key::Esc => app.close_detail(),
             Key::Up | Key::Char('k') => app.scroll_detail_up(),
             Key::Down | Key::Char('j') => app.scroll_detail_down(),
-            Key::Ctrl('j') | Key::PageDown => app.scroll_detail_page_down(),
-            Key::Ctrl('k') | Key::PageUp => app.scroll_detail_page_up(),
+            Key::Ctrl('f') | Key::PageDown => app.scroll_detail_page_down(),
+            Key::Ctrl('b') | Key::PageUp => app.scroll_detail_page_up(),
             _ => {}
         },
         Screen::Error(_) => match key {
