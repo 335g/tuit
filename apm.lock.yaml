@@ -113,3 +113,20 @@ dependencies:
     .agents/skills/writing-great-skills/GLOSSARY.md: sha256:eaab3564313cec3d35209bb42b05c797dcb350c075a079936c4dd173f9d8e8d8
     .agents/skills/writing-great-skills/SKILL.md: sha256:7c6ba7ec25bb2c0e173c52cdc2da878aef0b083ec19a9c1799934e480c8833cc
   content_hash: sha256:48c81cb0ebc5653bf5b0a0a7d618c54a35fa91a45255ba9771bec3ee840a9ff8
+- repo_url: shadcn/improve
+  host: github.com
+  resolved_commit: 03369ee6d7cafbfcecc4346539b05b3dc0a603bb
+  package_type: marketplace_plugin
+  deployed_files:
+  - .agents/skills/improve
+  - .agents/skills/improve/SKILL.md
+  - .agents/skills/improve/references/audit-playbook.md
+  - .agents/skills/improve/references/closing-the-loop.md
+  - .agents/skills/improve/references/plan-template.md
+  deployed_file_hashes:
+    .agents/skills/improve/SKILL.md: sha256:1599aa29e9b16424cb767779efac53fa56e3f38be92dff4ac587393a1ad5070a
+    .agents/skills/improve/references/audit-playbook.md: sha256:587c1b927070f3c28139ad95ac34cc21a7da32618cfeb966cb774e58a865d4c8
+    .agents/skills/improve/references/closing-the-loop.md: sha256:5d526bb378e1783bbeb68d7af527776cbe98cde27a1aeccbd13e818e5b73b454
+    .agents/skills/improve/references/plan-template.md: sha256:7be76dd3c29442288fa7cee4432fc6e95c2fdbf748c9b356344bf647c5f8722e
+  content_hash: sha256:4cd40e13503aac88bb60c202dc6a62977b290dbdc973d8cad0556ac46de6042d
+  declared_license: MIT
