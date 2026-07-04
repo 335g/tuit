@@ -35,7 +35,10 @@ The strategy of preserving the user's selection across commit list reloads by lo
 One of: Loading, List, Detail, Error, Alert. The Alert screen carries an AlertKind to distinguish between HEAD Change (informational, auto-dismiss) and Commit Deletion (requires acknowledgment).
 
 **AlertKind**:
-A discriminated union identifying the reason for an alert: `HeadMoved { from, to }` or `CommitDeleted { oid }`.
+A discriminated union identifying the reason for a modal alert. Currently: `CommitDeleted { oid }`.
+
+**Notification**:
+A transient non-blocking message displayed in the footer. Carries a `message: String` and a `remaining_ticks: u16` countdown for auto-dismiss. Used for HEAD Change announcements only.
 
 **Notification Timeout**:
 The duration (in milliseconds) that a HEAD-change notification is displayed before automatically dismissing. Configurable; defaults to 3000 ms.
