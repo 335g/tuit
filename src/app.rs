@@ -24,7 +24,7 @@ pub struct App {
     pub selected_commit: Option<Commit>,
     pub colors: config::Colors,
     pub should_quit: bool,
-    pub detail_scroll: usize,
+    pub detail_scroll: Cell<usize>,
     /// Height of the scrollable content area (updated by render for page-scroll calculations).
     pub detail_content_height: Cell<usize>,
     /// Whether the keybindings help overlay is shown.
@@ -41,7 +41,7 @@ impl App {
             selected_commit: None,
             colors: config.colors,
             should_quit: false,
-            detail_scroll: 0,
+            detail_scroll: Cell::new(0),
             detail_content_height: Cell::new(0),
             show_help: false,
         }
@@ -97,7 +97,7 @@ impl App {
         let selected = &self.commits[self.selected_index];
         let oid = selected.oid.clone();
 
-        self.detail_scroll = 0;
+        self.detail_scroll.set(0);
 
         match git::load_diff(&oid) {
             Ok((body, diff)) => {
@@ -123,14 +123,14 @@ impl App {
         if self.screen == Screen::Detail {
             self.screen = Screen::List;
             self.selected_commit = None;
-            self.detail_scroll = 0;
+            self.detail_scroll.set(0);
         }
     }
 
     /// Scroll up in the detail view (towards earlier content).
     pub fn scroll_detail_up(&mut self) {
-        if self.screen == Screen::Detail && self.detail_scroll > 0 {
-            self.detail_scroll -= 1;
+        if self.screen == Screen::Detail && self.detail_scroll.get() > 0 {
+            self.detail_scroll.set(self.detail_scroll.get() - 1);
         }
     }
 
@@ -138,21 +138,21 @@ impl App {
     pub fn scroll_detail_down(&mut self) {
         // Ceiling is enforced in the render function where we know content height.
         if self.screen == Screen::Detail {
-            self.detail_scroll += 1;
+            self.detail_scroll.set(self.detail_scroll.get() + 1);
         }
     }
 
     /// Scroll up by one page in the detail view.
     pub fn scroll_detail_page_up(&mut self) {
-        if self.screen == Screen::Detail && self.detail_scroll > 0 {
+        if self.screen == Screen::Detail && self.detail_scroll.get() > 0 {
             let page = self.detail_content_height.get().max(1);
-            let new = self.detail_scroll.saturating_sub(page);
+            let new = self.detail_scroll.get().saturating_sub(page);
             // Clamp: don't overshoot the start when `page` is large.
-            self.detail_scroll = if new > self.detail_scroll {
+            self.detail_scroll.set(if new > self.detail_scroll.get() {
                 0
             } else {
                 new
-            };
+            });
         }
     }
 
@@ -161,7 +161,7 @@ impl App {
         // Ceiling is enforced in the render function where we know content height.
         if self.screen == Screen::Detail {
             let page = self.detail_content_height.get().max(1);
-            self.detail_scroll = self.detail_scroll.saturating_add(page);
+            self.detail_scroll.set(self.detail_scroll.get().saturating_add(page));
         }
     }
 

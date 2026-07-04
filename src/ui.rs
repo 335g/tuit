@@ -339,7 +339,8 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     app.detail_content_height.set(diff_height);
     let total_diff_lines = diff_lines.len();
     let max_scroll = total_diff_lines.saturating_sub(diff_height);
-    let scroll = app.detail_scroll.min(max_scroll);
+    let scroll = app.detail_scroll.get().min(max_scroll);
+    app.detail_scroll.set(scroll); // sync back so page-drift never accumulates
 
     let diff_para = Paragraph::new(Text::from(diff_lines))
         .style(Style::default().bg(bg_color))
