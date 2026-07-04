@@ -62,6 +62,11 @@ where
     let mut app = App::new(config);
     app.load_commits();
 
+    // Draw initial state before waiting for input.
+    terminal.draw(|frame| {
+        ui::render(frame, &app);
+    })?;
+
     // 3. Event loop.
     for key in events {
         handle_input(&mut app, key);
