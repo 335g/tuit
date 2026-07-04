@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use crate::config::{self, Config};
 use crate::git::{self, Commit};
 
@@ -23,6 +25,8 @@ pub struct App {
     pub colors: config::Colors,
     pub should_quit: bool,
     pub detail_scroll: usize,
+    /// Height of the scrollable content area (updated by render for page-scroll calculations).
+    pub detail_content_height: Cell<usize>,
 }
 
 impl App {
@@ -36,6 +40,7 @@ impl App {
             colors: config.colors,
             should_quit: false,
             detail_scroll: 0,
+            detail_content_height: Cell::new(0),
         }
     }
 
@@ -131,6 +136,29 @@ impl App {
         // Ceiling is enforced in the render function where we know content height.
         if self.screen == Screen::Detail {
             self.detail_scroll += 1;
+        }
+    }
+
+    /// Scroll up by one page in the detail view.
+    pub fn scroll_detail_page_up(&mut self) {
+        if self.screen == Screen::Detail && self.detail_scroll > 0 {
+            let page = self.detail_content_height.get().max(1);
+            let new = self.detail_scroll.saturating_sub(page);
+            // Clamp: don't overshoot the start when `page` is large.
+            self.detail_scroll = if new > self.detail_scroll {
+                0
+            } else {
+                new
+            };
+        }
+    }
+
+    /// Scroll down by one page in the detail view.
+    pub fn scroll_detail_page_down(&mut self) {
+        // Ceiling is enforced in the render function where we know content height.
+        if self.screen == Screen::Detail {
+            let page = self.detail_content_height.get().max(1);
+            self.detail_scroll = self.detail_scroll.saturating_add(page);
         }
     }
 

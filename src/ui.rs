@@ -318,6 +318,7 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
 
     // Calculate scroll offset
     let content_height = content_area.height as usize;
+    app.detail_content_height.set(content_height);
     let total_lines = content_lines.len();
     let max_scroll = total_lines.saturating_sub(content_height);
     let scroll = app.detail_scroll.min(max_scroll);
