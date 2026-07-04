@@ -1,4 +1,4 @@
-Status: needs-triage
+Status: ready-for-agent
 Type: task
 
 # 04: TUI application state machine

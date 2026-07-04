@@ -1,4 +1,4 @@
-Status: needs-triage
+Status: ready-for-agent
 Type: task
 
 # 03: Git data layer (gix integration)
@@ -57,3 +57,7 @@ A helper function to convert a timestamp to a human-readable relative string:
 - `load_diff()` returns a unified-diff string for a given commit hash
 - Handles edge cases: empty repo (no commits), detached HEAD, non-git directory
 - Each error case returns a descriptive `anyhow::Error` (not a panic)
+
+## Testing note
+
+This module is exercised indirectly through the single end-to-end seam: tests run ratty inside temporary git repositories and assert on the rendered Commit List and Commit Detail.

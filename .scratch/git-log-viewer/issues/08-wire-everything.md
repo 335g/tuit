@@ -1,4 +1,4 @@
-Status: needs-triage
+Status: ready-for-agent
 Type: task
 
 # 08: Wire everything in main.rs
@@ -9,36 +9,39 @@ Replace the existing Hello World TUI loop in `main.rs` with the full ratty appli
 
 ## Main flow
 
+Introduce a single generic entry point that can be used by both production and tests:
+
+```rust
+pub fn run_app<B: Backend, I: Iterator<Item = KeyEvent>>(
+    terminal: &mut Terminal<B>,
+    events: I,
+    working_dir: &Path,
+) -> Result<()>
+```
+
+This function:
+1. Loads config and colors from `~/.config/ratty/`.
+2. Initializes `App` state and loads commits from `working_dir`.
+3. Runs the event loop: read the next event, update app state, draw the frame.
+4. Returns when `app.should_quit` becomes true.
+
+`main()` does the real terminal setup and wires `CrosstermBackend`, `crossterm::event::read()` (via a small adapter), and the current working directory:
+
 ```rust
 fn main() -> Result<()> {
-    // 1. Load config
-    let config = config::load()?;
-
-    // 2. Initialize app state
-    let mut app = App::new(config);
-
-    // 3. Load commits (async or sync before entering TUI loop)
-    if let Err(e) = app.load_commits() {
-        // App transitions to Error screen internally
-    }
-
-    // 4. Enter TUI loop (terminal setup as before)
     enable_raw_mode()?;
+    io::stdout().execute(EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
+    let res = run_app(&mut terminal, real_events(), current_dir());
 
-    while !app.should_quit {
-        // 5. Handle input
-        handle_input(&mut app)?;
-
-        // 6. Render
-        terminal.draw(|frame| {
-            render(&app, frame);
-        })?;
-    }
-
-    // 7. Cleanup (same as before)
     disable_raw_mode()?;
-    // ...
+    io::stdout().execute(LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
+
+    if let Err(e) = res {
+        eprintln!("Error: {e}");
+    }
+    Ok(())
 }
 ```
 

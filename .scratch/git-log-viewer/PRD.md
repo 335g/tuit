@@ -1,264 +1,73 @@
-# PRD: ratty — Git Log Viewer
+> Status: ready-for-agent
 
-Status: draft
+# PRD: ratty — TUI Git Log Viewer
 
-## 1. 概要
+## Problem Statement
 
-ratty を、現在のシンプルな Hello World 画面から、カレントディレクトリの git リポジトリのコミット履歴を表示・閲覧できる TUI アプリケーションに拡張する。
+Terminal users inspect git history by running commands like `git log --oneline` and `git show`, but these commands are read-only and require switching contexts between different invocations. There is no lightweight, keyboard-driven TUI that lets a user open a repository, scroll through the current branch's commits, and inspect a selected commit's full message and diff from a single session.
 
-## 2. スコープ（フェーズ1）
+## Solution
 
-- カレントブランチのコミット一覧を表示する
-- コミットを選択して詳細（全文 + diff）をオーバーレイ表示する
-- 設定ファイルとカラーテーマによる color scheme の外部化
+Build ratty as a terminal UI application that opens the current git repository, shows a scrollable Commit List of the current branch, and lets the user open a Commit Detail overlay for the selected commit. The tool is driven entirely by the keyboard, starts with sensible defaults, and can be customized via a config file and color theme.
 
-### 対象外（フェーズ1）
+## User Stories
 
-- 全ブランチ表示
-- パス引数によるリポジトリ指定
-- オーバーレイ内スクロール
-- コミットグラフ表示（`--graph`）
-- インタラクティブ操作（チェリーピック、rebase 等）
-- ファイル単位の履歴ブラウズ
+1. As a terminal user, I want to run `ratty` inside a git repository and immediately see the current branch's commits, so that I can browse history without typing `git log` commands.
+2. As a user, I want the Commit List to show each commit's abbreviated hash, subject message, author name, and relative timestamp, so that I can scan the history at a glance.
+3. As a user, I want to press `↑` and `↓` to move the cursor through the Commit List, so that I can select the commit I care about.
+4. As a user, I want to press `Enter` on a commit to open a Commit Detail overlay, so that I can read the full commit body and diff.
+5. As a user, I want to press `Esc` to close the Commit Detail overlay and return to the Commit List, so that I can continue browsing without losing my place.
+6. As a user, I want to press `q` to quit ratty from the Commit List, so that I can return to my shell.
+7. As a user, I want ratty to show a clear error message when I run it outside a git repository, so that I understand why it cannot start.
+8. As a user, I want ratty to show a clear message when the repository has no commits, so that I know the repository is empty.
+9. As a user, I want ratty to handle a corrupt `.git` directory or permission error gracefully, so that the application does not panic.
+10. As a user, I want ratty to work correctly in a detached HEAD state, so that I can still inspect the commit at HEAD.
+11. As a user, I want to customize ratty's colors by dropping a TOML theme file into `~/.config/ratty/themes/`, so that the tool matches my terminal colorscheme.
+12. As a user, I want ratty to fall back to a built-in default theme when no config or theme file exists, so that the tool works out of the box.
+13. As a user, I want the selected commit row to be highlighted, so that I always know which commit is active.
+14. As a user, I want diff lines to be color-coded (added, deleted, context), so that I can read patches quickly.
+15. As a maintainer, I want a single end-to-end test seam that exercises the whole application against a temporary git repository, so that the UI behaves correctly without requiring manual terminal interaction.
 
-## 3. ユーザーストーリー
+## Implementation Decisions
 
-1. ユーザーは git リポジトリ内で `ratty` を実行すると、カレントブランチのコミット一覧が表示される
-2. カーソルを上下に移動してコミットを選択できる
-3. Enter で選択中のコミットの詳細（author, date, commit body, diff）をオーバーレイで確認できる
-4. Esc でオーバーレイを閉じて一覧に戻れる
-5. q でアプリケーションを終了できる
-6. テーマファイルを配置することで配色をカスタマイズできる
+- **Data source.** ratty uses `gix` (gitoxide) to read the local `.git` object store. This avoids a runtime dependency on the `git` CLI and provides typed access to commits and diffs. See ADR-0001.
+- **Commit scope.** Phase 1 only displays the current branch (the commit graph reachable from HEAD). Displaying all branches, graphs, and interactive git operations are deferred.
+- **Eager loading.** On startup, ratty loads all commits from the current branch into memory. This keeps the rendering logic simple; lazy loading is deferred.
+- **Module responsibilities.** The application is split into four modules:
+  - a state machine that owns the current screen, selected index, loaded commits, and parsed colors;
+  - a git module that opens the repository and extracts commits and diffs;
+  - a config module that resolves `~/.config/ratty/config.toml` and loads theme files;
+  - a UI module that renders the Commit List, Commit Detail overlay, and error screen using ratatui.
+- **Screen states.** The state machine supports four screens: Loading, List, Detail, and Error. From List the user can navigate, select a commit, or quit. From Detail the user can return to List. From Error the only action is exit.
+- **Commit Detail content.** The overlay displays author, date, subject, body, and a unified diff. If the diff does not fit, it is truncated; scrollable detail is out of scope for Phase 1.
+- **Color system.** A `Colors` value is produced from either a user-supplied theme file or a hard-coded default palette. UI code applies these colors per field (hash, message, author, date, diff add/del/context, etc.).
+- **Path resolution.** The configuration directory is resolved with the `directories` crate; ratty does not accept a path argument and always operates on the current working directory.
+- **Test seam.** The application exposes a generic entry point that accepts any ratatui `Backend` and an iterator of key events. Production wiring uses `CrosstermBackend` and real crossterm events; tests use `TestBackend` and a scripted event list.
+- **Error handling.** All git and config errors are surfaced to the user as a rendered Error screen rather than panicking or dumping a backtrace.
 
-## 4. 画面設計
+## Testing Decisions
 
-### 4.1 コミット一覧画面（メイン画面）
+- **One high-level seam.** All functional tests run the full application through the generic entry point using `TestBackend` and a temporary git repository created in a test fixture.
+- **What a good test looks like.** A test sets up a repo with known commits, runs ratty with a scripted key sequence, and asserts on the rendered terminal buffer (e.g., that a specific commit hash appears, that the cursor moves, that the detail overlay opens, or that an error screen appears). Tests only inspect external behavior, not module internals.
+- **No isolated unit tests.** Individual modules (`git`, `config`, `ui`) are not tested in isolation. The single seam gives enough confidence for Phase 1 and avoids over-specifying implementation details.
+- **No tests for the binary entry point.** The `main` function only wires real backend/events/cleanup and is exercised manually or by integration tooling outside the PRD scope.
 
-```
-┌─────────────────────────────────────────────────────┐
-│  ratty                                          q:quit │
-├─────────────────────────────────────────────────────┤
-│                                                       │
-│   abc1234 Add feature X                        Alice  3d ago │
-│  ❯ def5678 Fix bug Y                          Bob    2h ago │
-│    abcdead Update README                       Alice  1h ago │
-│    fedcba9 WIP: working on feature...          Carol  30m ago │
-│                                                       │
-├─────────────────────────────────────────────────────┤
-│  ↑↓ navigate  Enter detail  q quit                    │
-└─────────────────────────────────────────────────────┘
-```
+## Out of Scope
 
-#### レイアウト仕様
+- Displaying all branches, remotes, tags, or stashes.
+- Commit graph / DAG visualization.
+- Interactive git operations (checkout, rebase, cherry-pick, staging, etc.).
+- File-level history browser.
+- Path argument to open a repository other than the current directory.
+- Scrollable detail overlay.
+- Theme hot reload, theme listing command, or 256-color fallback.
+- Searching/filtering commits by text, author, or date.
+- Mouse support.
+- Performance guarantees for repositories larger than tens of thousands of commits.
 
-| 領域 | 説明 |
-|------|------|
-| **ヘッダー** | アプリ名 "ratty" を左寄せ、"q:quit" を右寄せ |
-| **コミットリスト** | 残り領域全て。選択行には ❯ マーカー |
-| **フッター** | キーバインドヒント |
+## Further Notes
 
-#### 各行のフォーマット
-
-```
- {❯| } {hash:7} {message (可変幅)} {author:右寄せ 最大12文字} {date:右寄せ 固定10文字}
-```
-
-- hash: 短縮7桁
-- message: 残り幅に応じて自動縮小、省略時は `…`
-- author: 12文字超えたら省略
-- date: `3d ago`, `2h ago`, `30m ago` 形式、最大10文字
-
-### 4.2 コミット詳細オーバーレイ
-
-```
-┌────────── Commit abc1234 ────────────────────────────┐
-│                                                        │
-│  Author:  Alice                                        │
-│  Date:    3 days ago                                   │
-│                                                        │
-│  Add feature X                                         │
-│                                                        │
-│  This is the full commit body.                         │
-│  It can span multiple lines...                         │
-│                                                        │
-│  ─── diff (unified format) ────────────────────────── │
-│  diff --git a/src/main.rs b/src/main.rs                │
-│  index abc1234..def5678 100644                         │
-│  --- a/src/main.rs                                     │
-│  +++ b/src/main.rs                                     │
-│  @@ -1,5 +1,8 @@                                       │
-│   use std::io;                                         │
-│  +use gix;                                             │
-│   use anyhow::Result;                                  │
-│  +                                                     │
-│  +fn main() -> Result<()> {                            │
-│  ...                                                    │
-│                                                        │
-│  ──────────────────────────────────────────────────── │
-│  [Esc] close                                            │
-└────────────────────────────────────────────────────────┘
-```
-
-#### 仕様
-
-- 画面の 90% x 90%（ほぼ画面いっぱい）
-- 背景のリストは見えない（全面オーバーレイ）
-- diff が領域に収まらない場合は切り捨て（スクロールは後日対応）
-- diff は gix が返す unified diff 形式をそのまま表示する
-- Esc でクローズ
-
-### 4.3 エラー画面
-
-git リポジトリでないディレクトリで実行した場合：
-
-```
-┌─────────────────────────────────────────────────────┐
-│                                                     │
-│                    ⚠  Error                         │
-│                                                     │
-│    ratty は git リポジトリの中で実行してください。    │
-│                                                     │
-│    [Enter] exit                                      │
-│                                                     │
-└─────────────────────────────────────────────────────┘
-```
-
-## 5. データモデル
-
-```rust
-struct Commit {
-    hash: String,        // 短縮7桁
-    message: String,     // 件名行
-    author: String,      // 名前のみ
-    date: RelativeTime,  // "3d ago" 等
-    body: String,        // コミット本文（詳細表示時）
-    diff: String,        // diff テキスト（詳細表示時）
-}
-```
-
-## 6. データフロー
-
-```
-gix でリポジトリを開く
-  → カレントブランチの全コミットを Vec<Commit> に読み込み
-  → TUI がリストを描画
-  → ユーザーが Enter → gix で diff 取得 → オーバーレイ表示
-```
-
-## 7. 設定とテーマ
-
-### 7.1 ディレクトリ構成
-
-```
-~/.config/ratty/
-├── config.toml
-└── themes/
-    ├── catppuccin.toml
-    ├── nord.toml
-    └── ...
-```
-
-### 7.2 config.toml
-
-```toml
-# ~/.config/ratty/config.toml
-theme = "catppuccin"
-```
-
-### 7.3 テーマファイル（TOML）
-
-```toml
-# ~/.config/ratty/themes/catppuccin.toml
-name = "Catppuccin Mocha"
-
-[colors]
-# カーソル行
-cursor_bg = "#89b4fa"
-cursor_fg = "#1e1e2e"
-
-# リスト全体の背景
-list_bg = "#1e1e2e"
-
-# 各コミット行のフィールド
-hash = "#a6e3a1"
-message = "#cdd6f4"
-author = "#f5c2e7"
-date = "#6c7086"
-
-# 詳細オーバーレイ
-detail_bg = "#181825"
-detail_border = "#89b4fa"
-detail_heading = "#f9e2af"
-detail_value = "#cdd6f4"
-diff_add = "#a6e3a1"
-diff_del = "#f38ba8"
-diff_normal = "#bac2de"
-```
-
-### 7.4 デフォルトテーマ
-
-テーマファイルが存在しない場合、または `config.toml` が存在しない場合は、ハードコードされたデフォルト配色を使用する。
-
-### 7.5 フェーズ2以降の拡張予定
-
-- テーマの動的切り替え（設定変更 + 再起動不要な hot reload）
-- 16色 / 256色モードへのフォールバック
-- `ratty --list-themes` で利用可能テーマ一覧表示
-
-## 8. 技術スタック
-
-| 技術 | バージョン | 用途 |
-|------|-----------|------|
-| Rust | edition 2024 | 言語 |
-| ratatui | 0.30 | TUI レンダリング |
-| crossterm | 0.29 | ターミナルバックエンド |
-| gix | 最新 | git データ取得 |
-| toml | 最新 | 設定ファイル / テーマファイルパース |
-| serde | 最新 | TOML デシリアライズ |
-| anyhow | 1.0 | エラーハンドリング |
-| directories | 最新 | 設定ディレクトリの解決 |
-
-## 9. プロジェクト構成
-
-```
-src/
-├── main.rs      # エントリポイント、エラーハンドリング
-├── app.rs       # アプリケーション状態管理
-├── git.rs       # gix を使ったコミット・diff 取得
-├── config.rs    # 設定ファイル / テーマ読み込み
-└── ui.rs        # ratatui のレンダリング
-```
-
-## 10. キーバインド
-
-| 操作 | キー |
-|------|------|
-| カーソル上 | `↑` |
-| カーソル下 | `↓` |
-| 詳細を開く | `Enter` |
-| 詳細を閉じる | `Esc` |
-| 終了（一覧画面で） | `q` |
-
-## 11. 非機能要件
-
-- **起動時間**: 一般的なリポジトリ（〜数千コミット）では起動後1秒以内にコミット一覧が表示されること。
-  - *リスク注記*: 10万コミット級の巨大リポジトリでは全件読み込みに1秒を超える可能性がある。フェーズ1では許容するが、将来の最適化候補として認識しておく。
-- **メモリ使用量**: 10万コミット程度のリポジトリでも実用的であること（ただし最初は全件読み込み）。
-- **エラー時**: パニックせず、ユーザーに理解可能なメッセージを表示して graceful に終了すること。
-- **エッジケース**: 空リポジトリ、破損した .git、パーミッションエラー、detached HEAD のいずれでも panic しないこと。
-
-## 12. テスト戦略
-
-### 方針
-
-- **単体テスト**: ロジックを含むモジュール（`git.rs`, `config.rs`）にはテストを書く。
-  - `git.rs`: gix のラッパー関数はテスト用リポジトリ（`git_init` で作成した一時ディレクトリ）に対して結合テストとして検証する。
-  - `config.rs`: 設定ファイルのパース・マージ・フォールバックロジックは、一時ファイルを使ったテストで検証する。
-- **UI のテスト**: ratatui の `backend::TestBackend` を用いてスナップショットテストを行う（フェーズ1の後半で追加）。
-- **統合テスト**: `tests/` ディレクトリに実際の git リポジトリを使った E2E テストを配置する（フェーズ1の後半で追加）。
-
-## 13. 開いた質問 / 未決定
-
-全ての主要設計判断は上記で決定済み。残る未決定項目は以下のみ：
-
-- なし（本PRDでカバー）
+- The default theme should be a dark palette that is legible in most terminals. It should define colors for the cursor row, list fields, overlay border, overlay headings/values, and diff lines.
+- The date display uses relative time strings (`3d ago`, `2h ago`, `30m ago`, `3mo ago`, `1y ago`). The exact cutoff points are left to the implementation, but the format must stay within the 10-character width allocated in the Commit List.
+- Merge commits in the detail overlay are diffed against the first parent only.
+- Future phases can introduce branch switching, all-branches view, and scrolling detail without changing the core state machine shape.

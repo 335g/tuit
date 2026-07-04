@@ -1,4 +1,4 @@
-Status: needs-triage
+Status: ready-for-agent
 Type: task
 
 # 02: Config and theme system
@@ -81,4 +81,7 @@ A reasonable light-on-dark scheme (e.g., inspired by Catppuccin Mocha as shown a
 - When a valid theme file exists, colors reflect that file
 - When config.toml references a non-existent theme, falls back to default
 - Malformed TOML files produce a clear error message (not a panic)
-- Unit tests for parse / merge / fallback logic
+
+## Testing note
+
+This module is exercised indirectly through the single end-to-end seam: tests run ratty in a temp directory with controlled `~/.config/ratty/` files and assert on rendered output colors.

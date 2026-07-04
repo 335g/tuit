@@ -1,4 +1,4 @@
-Status: needs-triage
+Status: ready-for-agent
 Type: task
 
 # 01: Project scaffold and dependencies
