@@ -48,9 +48,7 @@ pub fn load_commits() -> Result<Vec<Commit>> {
     let mut commits = Vec::new();
     for entry in walk {
         let info = entry.context("Error walking commits")?;
-        let commit_obj = info
-            .object()
-            .context("Failed to read commit object")?;
+        let commit_obj = info.object().context("Failed to read commit object")?;
 
         let oid_hex = info.id().to_hex().to_string();
         let short_hash = oid_hex.chars().take(7).collect::<String>();
@@ -87,19 +85,12 @@ pub fn load_commits() -> Result<Vec<Commit>> {
 pub fn load_diff(oid_hex: &str) -> Result<(String, String)> {
     let repo = open_repo()?;
 
-    let oid: gix::hash::ObjectId = oid_hex
-        .parse()
-        .context("Invalid OID format")?;
+    let oid: gix::hash::ObjectId = oid_hex.parse().context("Invalid OID format")?;
 
-    let commit_obj = repo
-        .find_commit(oid)
-        .context("Commit not found")?;
+    let commit_obj = repo.find_commit(oid).context("Commit not found")?;
 
     let msg_ref = commit_obj.message().context("Failed to decode message")?;
-    let body = msg_ref
-        .body
-        .map(|b| b.to_string())
-        .unwrap_or_default();
+    let body = msg_ref.body.map(|b| b.to_string()).unwrap_or_default();
 
     // Get the commit tree.
     let tree = repo
@@ -107,15 +98,12 @@ pub fn load_diff(oid_hex: &str) -> Result<(String, String)> {
         .context("Failed to find commit tree")?;
 
     // Get parent tree (first parent only for merge commits).
-    let parent_tree = commit_obj
-        .parent_ids()
-        .next()
-        .and_then(|pid| {
-            repo.find_commit(pid.detach())
-                .ok()
-                .and_then(|pc| pc.tree_id().ok())
-                .and_then(|tid| repo.find_tree(tid.detach()).ok())
-        });
+    let parent_tree = commit_obj.parent_ids().next().and_then(|pid| {
+        repo.find_commit(pid.detach())
+            .ok()
+            .and_then(|pc| pc.tree_id().ok())
+            .and_then(|tid| repo.find_tree(tid.detach()).ok())
+    });
 
     // Build unified diff.
     let diff_text = build_diff(&repo, parent_tree.as_ref(), &tree)?;
@@ -271,9 +259,9 @@ fn build_diff(
 
 /// Append a unified-diff hunk for the two text contents using imara-diff.
 fn append_unified_diff(out: &mut String, old: &str, new: &str) {
-    use imara_diff::intern::InternedInput;
     use imara_diff::UnifiedDiffBuilder;
-    use imara_diff::{diff, Algorithm};
+    use imara_diff::intern::InternedInput;
+    use imara_diff::{Algorithm, diff};
 
     if old.is_empty() && new.is_empty() {
         return;

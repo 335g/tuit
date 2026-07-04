@@ -44,9 +44,8 @@ impl App {
             Ok(commits) => {
                 self.commits = commits;
                 if self.commits.is_empty() {
-                    self.screen = Screen::Error(
-                        "このリポジトリにはまだコミットがありません。".into(),
-                    );
+                    self.screen =
+                        Screen::Error("このリポジトリにはまだコミットがありません。".into());
                 } else {
                     self.screen = Screen::List;
                 }
