@@ -50,7 +50,7 @@ pub fn render(frame: &mut Frame, app: &App) {
 /// Loading placeholder screen.
 fn render_loading(frame: &mut Frame) {
     let area = frame.area();
-    let text = Paragraph::new("Loading commits…")
+    let text = Paragraph::new("Loading commits...")
         .alignment(Alignment::Center)
         .block(Block::default().title(" ratty ").borders(Borders::ALL));
     frame.render_widget(text, area);
@@ -102,7 +102,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                     .chars()
                     .take(max_msg_width.saturating_sub(1))
                     .collect();
-                s.push('…');
+                s.push('.');
                 s
             } else {
                 commit.message.clone()
@@ -115,7 +115,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
             // Date field (up to 10 chars)
             let date_str = if commit.date.len() > 10 {
                 let mut s: String = commit.date.chars().take(9).collect();
-                s.push('…');
+                s.push('.');
                 s
             } else {
                 commit.date.clone()
@@ -186,7 +186,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     frame.render_widget(list, layout[1]);
 
     // --- Footer ---
-    let footer_text = " ↑↓ navigate · Enter detail · q quit ";
+    let footer_text = " ^/k up | v/j down | Enter detail | q quit ";
     let footer = Paragraph::new(Line::from(Span::styled(
         footer_text,
         Style::default().fg(Color::DarkGray),
@@ -230,7 +230,7 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     let bg_color = hex_color(&colors.detail_bg);
     let overlay = Block::default()
         .title(format!(
-            " {}  │ {}  │ {} ",
+            " {} | {} | {} ",
             commit.hash, commit.author, commit.date,
         ))
         .borders(Borders::ALL)
@@ -288,7 +288,7 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
         if !showed_all_body {
             let dim_style = Style::default().fg(Color::DarkGray);
             msg_lines.push(Line::from(Span::styled(
-                format!(" … and {} more lines", body_count - 8),
+                format!(" (... and {} more lines)", body_count - 8),
                 dim_style,
             )));
         }
@@ -301,7 +301,7 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     // --- Separator ---
     let sep_style = Style::default().fg(Color::DarkGray);
     let sep = Paragraph::new(Line::from(Span::styled(
-        "─".repeat(layout[1].width.max(1) as usize),
+        "-".repeat(layout[1].width.max(1) as usize),
         sep_style,
     )))
     .style(Style::default().bg(bg_color));
@@ -326,7 +326,7 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
                 .chars()
                 .take(diff_width.saturating_sub(3))
                 .collect();
-            s.push_str(" …");
+            s.push_str(" ...");
             s
         } else {
             line.to_string()
@@ -353,7 +353,7 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
         } else {
             0
         };
-        format!(" [Esc] close  ·  ↑↓ scroll  ({pct}%) ")
+        format!(" [Esc] close | ^/v scroll ({pct}%) ")
     } else {
         " [Esc] close ".to_string()
     };
@@ -415,8 +415,8 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
         Screen::List => (
             "Commit List",
             &[
-                ("↑ / k", "Move cursor up"),
-                ("↓ / j", "Move cursor down"),
+                ("^ / k", "Move cursor up"),
+                ("v / j", "Move cursor down"),
                 ("Enter", "Show commit details"),
                 ("q", "Quit ratty"),
             ],
@@ -424,8 +424,8 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
         Screen::Detail => (
             "Commit Detail",
             &[
-                ("↑ / k", "Scroll up"),
-                ("↓ / j", "Scroll down"),
+                ("^ / k", "Scroll up"),
+                ("v / j", "Scroll down"),
                 ("Ctrl+f", "Scroll down one page"),
                 ("Ctrl+b", "Scroll up one page"),
                 ("Esc", "Close detail view"),
