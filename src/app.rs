@@ -22,6 +22,7 @@ pub struct App {
     pub selected_commit: Option<Commit>,
     pub colors: config::Colors,
     pub should_quit: bool,
+    pub detail_scroll: usize,
 }
 
 impl App {
@@ -34,6 +35,7 @@ impl App {
             selected_commit: None,
             colors: config.colors,
             should_quit: false,
+            detail_scroll: 0,
         }
     }
 
@@ -87,6 +89,8 @@ impl App {
         let selected = &self.commits[self.selected_index];
         let oid = selected.oid.clone();
 
+        self.detail_scroll = 0;
+
         match git::load_diff(&oid) {
             Ok((body, diff)) => {
                 let mut commit = selected.clone();
@@ -111,6 +115,22 @@ impl App {
         if self.screen == Screen::Detail {
             self.screen = Screen::List;
             self.selected_commit = None;
+            self.detail_scroll = 0;
+        }
+    }
+
+    /// Scroll up in the detail view (towards earlier content).
+    pub fn scroll_detail_up(&mut self) {
+        if self.screen == Screen::Detail && self.detail_scroll > 0 {
+            self.detail_scroll -= 1;
+        }
+    }
+
+    /// Scroll down in the detail view (towards later content).
+    pub fn scroll_detail_down(&mut self) {
+        // Ceiling is enforced in the render function where we know content height.
+        if self.screen == Screen::Detail {
+            self.detail_scroll += 1;
         }
     }
 

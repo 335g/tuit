@@ -106,6 +106,8 @@ pub fn handle_input(app: &mut App, key: KeyCode) {
         },
         Screen::Detail => match key {
             KeyCode::Esc => app.close_detail(),
+            KeyCode::Up | KeyCode::Char('k') => app.scroll_detail_up(),
+            KeyCode::Down | KeyCode::Char('j') => app.scroll_detail_down(),
             _ => {}
         },
         Screen::Error(_) => match key {

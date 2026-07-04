@@ -231,15 +231,13 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     let inner = overlay.inner(overlay_area);
     frame.render_widget(overlay, overlay_area);
 
-    // Layout inside the overlay
+    // Layout inside the overlay (metadata, subject, scrollable content, close hint)
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3), // metadata (author, date)
             Constraint::Length(1), // subject
-            Constraint::Min(1),    // body
-            Constraint::Length(1), // separator
-            Constraint::Min(2),    // diff
+            Constraint::Min(1),    // scrollable content (body + diff)
             Constraint::Length(1), // close hint
         ])
         .split(inner);
@@ -268,31 +266,35 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     .style(Style::default().bg(bg_color));
     frame.render_widget(subject, layout[1]);
 
-    // --- Body ---
-    let body_style = Style::default().fg(hex_color(&colors.detail_value));
-    let body = Paragraph::new(commit.body.clone())
-        .style(body_style.bg(bg_color))
-        .wrap(Wrap { trim: false });
-    frame.render_widget(body, layout[2]);
+    // --- Scrollable content (body + diff) ---
+    let content_area = layout[2];
+    let content_width = content_area.width.saturating_sub(2) as usize;
 
-    // --- Diff section ---
+    // Build combined content lines with proper styling
+    let mut content_lines: Vec<Line> = Vec::new();
     let diff_style = Style::default().fg(Color::DarkGray);
-    let diff_sep = Paragraph::new(Line::from(Span::styled(
-        "─── diff ─────────────────────────────",
-        diff_style,
-    )))
-    .style(Style::default().bg(bg_color));
-    frame.render_widget(diff_sep, layout[3]);
 
-    // Render diff with color-coded lines, truncated to fit.
-    let diff_area = layout[4];
-    let max_diff_lines = diff_area.height as usize;
+    // Body lines
+    for line in commit.body.lines() {
+        content_lines.push(Line::from(Span::styled(
+            line.to_string(),
+            value_style,
+        )));
+    }
 
-    let diff_lines: Vec<Line> = commit
-        .diff
-        .lines()
-        .take(max_diff_lines.saturating_sub(1))
-        .map(|line| {
+    // Diff separator (only if there is diff content)
+    if !commit.diff.is_empty() {
+        if !commit.body.is_empty() {
+            content_lines.push(Line::from(Span::styled(String::new(), diff_style)));
+        }
+        content_lines.push(Line::from(Span::styled(
+            "─── diff ─────────────────────────────",
+            diff_style,
+        )));
+        content_lines.push(Line::from(Span::styled(String::new(), diff_style)));
+
+        // Diff lines
+        for line in commit.diff.lines() {
             let style = if line.starts_with('+') {
                 fg(&colors.diff_add)
             } else if line.starts_with('-') {
@@ -300,33 +302,50 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
             } else {
                 fg(&colors.diff_normal)
             };
-            let display = if line.len() > diff_area.width.saturating_sub(2) as usize {
+            let display = if line.len() > content_width {
                 let mut s: String = line
                     .chars()
-                    .take(diff_area.width.saturating_sub(5) as usize)
+                    .take(content_width.saturating_sub(3))
                     .collect();
                 s.push_str(" …");
                 s
             } else {
                 line.to_string()
             };
-            Line::from(Span::styled(display, style))
-        })
-        .collect();
+            content_lines.push(Line::from(Span::styled(display, style)));
+        }
+    }
 
-    let diff_para = Paragraph::new(Text::from(diff_lines))
+    // Calculate scroll offset
+    let content_height = content_area.height as usize;
+    let total_lines = content_lines.len();
+    let max_scroll = total_lines.saturating_sub(content_height);
+    let scroll = app.detail_scroll.min(max_scroll);
+
+    let content = Paragraph::new(Text::from(content_lines))
         .style(Style::default().bg(bg_color))
-        .wrap(Wrap { trim: false });
-    frame.render_widget(diff_para, diff_area);
+        .scroll((scroll as u16, 0));
+    frame.render_widget(content, content_area);
 
-    // --- Close hint ---
+    // --- Close hint with optional scroll indicator ---
+    let hint_text = if total_lines > content_height {
+        let pct = if max_scroll > 0 {
+            (scroll as f64 / max_scroll as f64 * 100.0) as u8
+        } else {
+            0
+        };
+        format!(" [Esc] close  ·  ↑↓ scroll  ({pct}%) ")
+    } else {
+        " [Esc] close ".to_string()
+    };
+
     let hint = Paragraph::new(Line::from(Span::styled(
-        " [Esc] close ",
+        hint_text,
         Style::default().fg(Color::DarkGray),
     )))
     .alignment(Alignment::Center)
     .style(Style::default().bg(bg_color));
-    frame.render_widget(hint, layout[5]);
+    frame.render_widget(hint, layout[3]);
 }
 
 /// Render the error screen.
