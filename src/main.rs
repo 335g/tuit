@@ -120,6 +120,24 @@ where
 
 /// Process a single key-press against the current app state.
 pub fn handle_input(app: &mut App, key: Key) {
+    // Help overlay takes all input except toggle/close.
+    if app.show_help {
+        match key {
+            Key::Char('?') | Key::Esc => app.show_help = false,
+            _ => {}
+        }
+        return;
+    }
+
+    // Global: ? opens help from any screen.
+    match key {
+        Key::Char('?') => {
+            app.show_help = true;
+            return;
+        }
+        _ => {}
+    }
+
     match &app.screen {
         Screen::List => match key {
             Key::Up | Key::Char('k') => app.navigate_up(),
