@@ -23,14 +23,37 @@ pub struct Commit {
 }
 
 /// Open the current directory as a git repository.
-fn open_repo() -> Result<gix::Repository> {
+pub fn open_repo() -> Result<gix::Repository> {
     gix::open(".").context("ratty は git リポジトリの中で実行してください。")
 }
 
-/// Load all commits reachable from HEAD (newest first).
+/// Return the hex string of the HEAD commit OID from an already-opened repository.
+pub fn current_head_oid(repo: &gix::Repository) -> Result<String> {
+    let mut head = repo.head().context("No HEAD reference found")?;
+    let commit = head
+        .peel_to_commit_in_place()
+        .map_err(|_| anyhow::anyhow!("このリポジトリにはまだコミットがありません。"))?;
+    Ok(commit.id().to_hex().to_string())
+}
+
+/// Check whether a git object identified by its hex OID still exists in the repository.
+pub fn object_exists(repo: &gix::Repository, oid_hex: &str) -> Result<bool> {
+    let oid: gix::hash::ObjectId = oid_hex.parse().context("Invalid OID format")?;
+    match repo.find_object(oid) {
+        Ok(_) => Ok(true),
+        Err(gix::object::find::existing::Error::NotFound { .. }) => Ok(false),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Load all commits reachable from HEAD (newest first), opening a fresh repository.
 pub fn load_commits() -> Result<Vec<Commit>> {
     let repo = open_repo()?;
+    load_commits_from(&repo)
+}
 
+/// Load all commits reachable from HEAD using an already-opened repository.
+pub fn load_commits_from(repo: &gix::Repository) -> Result<Vec<Commit>> {
     // Resolve HEAD to a commit OID.
     let mut head = repo.head().context("No HEAD reference found")?;
     let head_id = match head.peel_to_commit_in_place() {
