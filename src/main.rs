@@ -1,8 +1,9 @@
 use std::io;
+use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::ExecutableCommand;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, poll};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
@@ -34,18 +35,52 @@ fn main() -> Result<()> {
     enable_raw_mode()?;
     io::stdout().execute(EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
-    let res = run_app(
-        &mut terminal,
-        std::iter::from_fn(|| read_key().ok()).flatten(),
-    );
 
+    // Load config.
+    let cfg = config::load().unwrap_or_else(|_| config::Config {
+        theme: "default".into(),
+        colors: config::default_colors(),
+        poll_interval_ms: 2000,
+        notification_timeout_ms: 3000,
+    });
+
+    // Initialise app and load commits.
+    let mut app = App::new(cfg);
+    app.load_commits();
+
+    // Draw initial state.
+    terminal.draw(|frame| {
+        ui::render(frame, &app);
+    })?;
+
+    let poll_interval = Duration::from_millis(app.poll_interval_ms);
+
+    // Live event loop: poll for both keyboard input and timer-based git sync.
+    loop {
+        // Block up to `poll_interval` for a key press.
+        if poll(poll_interval)? {
+            if let Some(key) = read_key()? {
+                handle_input(&mut app, key);
+            }
+        }
+
+        // Git state sync (throttled internally to `poll_interval_ms`).
+        app.poll();
+
+        // Re-render.
+        terminal.draw(|frame| {
+            ui::render(frame, &app);
+        })?;
+
+        if app.should_quit {
+            break;
+        }
+    }
+
+    // Teardown.
     disable_raw_mode()?;
     io::stdout().execute(LeaveAlternateScreen)?;
     terminal.show_cursor()?;
-
-    if let Err(e) = res {
-        eprintln!("Error: {e}");
-    }
 
     Ok(())
 }
@@ -84,6 +119,8 @@ where
     let cfg = config::load().unwrap_or_else(|_| config::Config {
         theme: "default".into(),
         colors: config::default_colors(),
+        poll_interval_ms: 2000,
+        notification_timeout_ms: 3000,
     });
     let config = cfg;
 
@@ -130,12 +167,9 @@ pub fn handle_input(app: &mut App, key: Key) {
     }
 
     // Global: ? opens help from any screen.
-    match key {
-        Key::Char('?') => {
-            app.show_help = true;
-            return;
-        }
-        _ => {}
+    if key == Key::Char('?') {
+        app.show_help = true;
+        return;
     }
 
     match &app.screen {
@@ -156,6 +190,10 @@ pub fn handle_input(app: &mut App, key: Key) {
         },
         Screen::Error(_) => match key {
             Key::Enter => app.quit(),
+            _ => {}
+        },
+        Screen::Alert(_) => match key {
+            Key::Enter | Key::Esc => app.dismiss_alert(),
             _ => {}
         },
         Screen::Loading => {
@@ -342,6 +380,101 @@ mod e2e_tests {
             }
         }
         s
+    }
+
+    #[test]
+    fn poll_detects_new_commit() {
+        let tmp = std::env::temp_dir().join("ratty-e2e-poll-new");
+        init_repo(&tmp, 2);
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg);
+        app.load_commits();
+
+        // Initial state: 2 commits
+        assert_eq!(app.commits.len(), 2);
+        assert_eq!(app.screen, Screen::List);
+        let first_head = app.current_head_oid.clone();
+
+        // Add a third commit via git CLI
+        let file = tmp.join("file-2.txt");
+        std::fs::write(&file, "content 2").unwrap();
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "add", &file.to_string_lossy()])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args([
+                "-C",
+                &tmp.to_string_lossy(),
+                "commit",
+                "--allow-empty",
+                "-m",
+                "Commit subject 2",
+            ])
+            .env("GIT_AUTHOR_NAME", "Test User")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "Test User")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com")
+            .status()
+            .unwrap();
+
+        // First poll: just records HEAD (skip change detection)
+        app.poll();
+        assert!(app.current_head_oid.is_some());
+        assert_ne!(app.current_head_oid, first_head);
+        assert_eq!(app.commits.len(), 3);
+        assert!(
+            app.commits[0].message.contains("Commit subject 2"),
+            "Expected newest commit at top, got: {}",
+            app.commits[0].message
+        );
+
+        std::env::set_current_dir(prev_dir).unwrap();
+    }
+
+    #[test]
+    fn poll_timestamps_update_in_detail() {
+        let tmp = std::env::temp_dir().join("ratty-e2e-poll-detail-time");
+        init_repo(&tmp, 1);
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg);
+        app.load_commits();
+        app.select_commit();
+        assert_eq!(app.screen, Screen::Detail);
+
+        let _original_date = app.selected_commit.as_ref().unwrap().date.clone();
+
+        // First poll (HEAD recording)
+        app.poll();
+
+        // Second poll: HEAD unchanged, timestamp might have advanced
+        app.last_poll_time = std::time::Instant::now()
+            - std::time::Duration::from_millis(5000); // force poll to run
+        app.poll();
+
+        // Should still be in Detail with same OID
+        assert_eq!(app.screen, Screen::Detail);
+        assert!(app.selected_commit.is_some());
+
+        std::env::set_current_dir(prev_dir).unwrap();
     }
 
     #[test]
