@@ -239,22 +239,35 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     let inner = overlay.inner(overlay_area);
     frame.render_widget(overlay, overlay_area);
 
-    // Count commit-message lines to size the fixed header area.
+    // Count commit-message lines, accounting for word-wrap, to size the header area.
     let body_lines: Vec<&str> = commit.body.lines().collect();
     let body_count = body_lines.len();
-    let max_body_show = body_count.min(8);
     let showed_all_body = body_count <= 8;
+    let wrap_width = inner.width.max(1) as usize;
 
-    let mut msg_height = 1u16; // subject line
+    // Rough estimate of how many visual rows a line takes when wrapped.
+    let wrap_rows = |text: &str| -> u16 {
+        let w = wrap_width.max(1);
+        let vis = text.chars().count();
+        if vis == 0 { 1 } else { ((vis + w - 1) / w) as u16 }
+    };
+
+    let mut msg_height = wrap_rows(&commit.message); // subject line (may wrap)
     if body_count > 0 {
         msg_height += 1; // blank line before body
-        msg_height += max_body_show as u16;
+        for line in body_lines.iter().take(8) {
+            msg_height += wrap_rows(line);
+        }
         if !showed_all_body {
-            msg_height += 1; // "… and N more" indicator
+            msg_height += 1; // "... and N more" indicator
         }
     }
 
-    // Layout: commit message (fixed), separator, diff (scrollable), close hint
+    // Cap at two thirds of the overlay so diff still has room.
+    let max_msg = (inner.height.saturating_sub(3) * 2 / 3).max(1);
+    msg_height = msg_height.min(max_msg);
+
+    // Layout: commit message (fixed, wraps), separator, diff (scrollable), close hint
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
