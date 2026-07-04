@@ -40,6 +40,11 @@ pub fn render(frame: &mut Frame, app: &App) {
         }
         Screen::Error(msg) => render_error(frame, msg),
     }
+
+    // Help overlay on top of everything else.
+    if app.show_help {
+        render_help_overlay(frame, app);
+    }
 }
 
 /// Loading placeholder screen.
@@ -360,6 +365,99 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     .alignment(Alignment::Center)
     .style(Style::default().bg(bg_color));
     frame.render_widget(hint, layout[3]);
+}
+
+/// Render the keybindings help popup overlay.
+fn render_help_overlay(frame: &mut Frame, app: &App) {
+    let colors = &app.colors;
+    let area = frame.area();
+
+    // Darken the background
+    let dim_block = Block::default().style(Style::default().bg(Color::Black));
+    frame.render_widget(dim_block, area);
+
+    // Popup size
+    let popup_w = (area.width as f64 * 0.7).min(52.0).max(40.0) as u16;
+    let popup_h = (area.height as f64 * 0.85).min(28.0) as u16;
+    let popup_x = (area.width - popup_w) / 2;
+    let popup_y = (area.height - popup_h) / 2;
+
+    let popup_area = Rect {
+        x: popup_x,
+        y: popup_y,
+        width: popup_w,
+        height: popup_h,
+    };
+
+    frame.render_widget(Clear, popup_area);
+
+    let border_color = hex_color(&colors.detail_border);
+    let bg_color = hex_color(&colors.detail_bg);
+    let overlay = Block::default()
+        .title(" Keybindings ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color))
+        .style(Style::default().bg(bg_color));
+    let inner = overlay.inner(popup_area);
+    frame.render_widget(overlay, popup_area);
+
+    // Build content lines
+    let heading_style = Style::default()
+        .fg(hex_color(&colors.detail_heading))
+        .add_modifier(Modifier::BOLD);
+    let key_style = Style::default().fg(hex_color(&colors.detail_border));
+    let desc_style = Style::default().fg(hex_color(&colors.detail_value));
+    let dim_style = Style::default().fg(Color::DarkGray);
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Section helper — takes (key, description) pairs.
+    let section_data: &[(&str, &[(&str, &str)])] = &[
+        ("Global", &[
+            ("?", "Toggle this help overlay"),
+            ("q", "Quit ratty"),
+        ]),
+        ("Commit List", &[
+            ("↑ / k", "Move cursor up"),
+            ("↓ / j", "Move cursor down"),
+            ("Enter", "Show commit details"),
+        ]),
+        ("Commit Detail", &[
+            ("↑ / k", "Scroll up"),
+            ("↓ / j", "Scroll down"),
+            ("Ctrl+f / PgDn", "Scroll down one page"),
+            ("Ctrl+b / PgUp", "Scroll up one page"),
+            ("Esc", "Close detail view"),
+        ]),
+        ("Error Screen", &[
+            ("Enter", "Quit"),
+        ]),
+    ];
+
+    for (title, bindings) in section_data {
+        lines.push(Line::from(Span::styled(String::new(), dim_style)));
+        lines.push(Line::from(Span::styled(
+            format!(" {} ", title),
+            heading_style,
+        )));
+        for (key_str, desc) in *bindings {
+            lines.push(Line::from(vec![
+                Span::styled(format!("   {:<14}", key_str), key_style),
+                Span::styled(desc.to_string(), desc_style),
+            ]));
+        }
+    }
+
+    // Close hint
+    lines.push(Line::from(Span::styled(String::new(), dim_style)));
+    lines.push(Line::from(Span::styled(
+        " [Esc/?] close ",
+        dim_style,
+    )));
+
+    let content = Paragraph::new(Text::from(lines))
+        .style(Style::default().bg(bg_color));
+    frame.render_widget(content, inner);
 }
 
 /// Render the error screen.
