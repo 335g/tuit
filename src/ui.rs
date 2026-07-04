@@ -426,8 +426,8 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
             &[
                 ("↑ / k", "Scroll up"),
                 ("↓ / j", "Scroll down"),
-                ("Ctrl+f / PgDn", "Scroll down one page"),
-                ("Ctrl+b / PgUp", "Scroll up one page"),
+                ("Ctrl+f", "Scroll down one page"),
+                ("Ctrl+b", "Scroll up one page"),
                 ("Esc", "Close detail view"),
             ],
         ),
