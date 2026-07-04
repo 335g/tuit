@@ -220,45 +220,80 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     // Clear the popup area so the commit list text doesn't show through
     frame.render_widget(Clear, overlay_area);
 
-    // Overlay border
+    // Overlay border — author & date in the title line
     let border_color = hex_color(&colors.detail_border);
     let bg_color = hex_color(&colors.detail_bg);
     let overlay = Block::default()
-        .title(format!(" Commit {} ", commit.hash))
+        .title(format!(
+            " {}  │ {}  │ {} ",
+            commit.hash, commit.author, commit.date,
+        ))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color))
         .style(Style::default().bg(bg_color));
     let inner = overlay.inner(overlay_area);
     frame.render_widget(overlay, overlay_area);
 
-    // Layout inside the overlay (metadata, separator, scrollable content, close hint)
+    // Count commit-message lines to size the fixed header area.
+    let body_lines: Vec<&str> = commit.body.lines().collect();
+    let body_count = body_lines.len();
+    let max_body_show = body_count.min(8);
+    let showed_all_body = body_count <= 8;
+
+    let mut msg_height = 1u16; // subject line
+    if body_count > 0 {
+        msg_height += 1; // blank line before body
+        msg_height += max_body_show as u16;
+        if !showed_all_body {
+            msg_height += 1; // "… and N more" indicator
+        }
+    }
+
+    // Layout: commit message (fixed), separator, diff (scrollable), close hint
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // metadata (author, date)
-            Constraint::Length(1), // separator ───────
-            Constraint::Min(1),    // scrollable content (subject + body + diff)
-            Constraint::Length(1), // close hint
+            Constraint::Length(msg_height),
+            Constraint::Length(1),  // separator ───────
+            Constraint::Min(1),     // diff (scrollable)
+            Constraint::Length(1),  // close hint
         ])
         .split(inner);
 
-    // --- Metadata line ---
-    let heading_style = Style::default()
-        .fg(hex_color(&colors.detail_heading))
-        .add_modifier(Modifier::BOLD);
+    // --- Commit message (fixed header) ---
     let value_style = Style::default().fg(hex_color(&colors.detail_value));
 
-    let meta_line = Line::from(vec![
-        Span::styled(" Author:  ", heading_style),
-        Span::styled(&commit.author, value_style),
-        Span::raw("    "),
-        Span::styled("Date:    ", heading_style),
-        Span::styled(&commit.date, value_style),
-    ]);
-    let meta = Paragraph::new(meta_line).style(Style::default().bg(bg_color));
-    frame.render_widget(meta, layout[0]);
+    let mut msg_lines: Vec<Line> = Vec::new();
 
-    // --- Separator under metadata ---
+    // Subject line (bold)
+    msg_lines.push(Line::from(Span::styled(
+        commit.message.clone(),
+        value_style.add_modifier(Modifier::BOLD),
+    )));
+
+    // Body lines (capped at 8)
+    if body_count > 0 {
+        msg_lines.push(Line::from(Span::styled(String::new(), value_style)));
+        for line in body_lines.iter().take(8) {
+            msg_lines.push(Line::from(Span::styled(
+                line.to_string(),
+                value_style,
+            )));
+        }
+        if !showed_all_body {
+            let dim_style = Style::default().fg(Color::DarkGray);
+            msg_lines.push(Line::from(Span::styled(
+                format!(" … and {} more lines", body_count - 8),
+                dim_style,
+            )));
+        }
+    }
+
+    let msg = Paragraph::new(Text::from(msg_lines))
+        .style(Style::default().bg(bg_color));
+    frame.render_widget(msg, layout[0]);
+
+    // --- Separator ---
     let sep_style = Style::default().fg(Color::DarkGray);
     let sep = Paragraph::new(Line::from(Span::styled(
         "─".repeat(layout[1].width.max(1) as usize),
@@ -267,76 +302,47 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     .style(Style::default().bg(bg_color));
     frame.render_widget(sep, layout[1]);
 
-    // --- Scrollable content (subject + body + diff) ---
-    let content_area = layout[2];
-    let content_width = content_area.width.saturating_sub(2) as usize;
+    // --- Diff (scrollable) ---
+    let diff_area = layout[2];
+    let diff_width = diff_area.width.saturating_sub(2) as usize;
 
-    // Build combined content lines with proper styling
-    let mut content_lines: Vec<Line> = Vec::new();
-    let dim_style = Style::default().fg(Color::DarkGray);
+    let mut diff_lines: Vec<Line> = Vec::new();
 
-    // Subject line (bold, always first in scrollable area)
-    content_lines.push(Line::from(Span::styled(
-        commit.message.clone(),
-        value_style.add_modifier(Modifier::BOLD),
-    )));
-
-    // Body lines (if any)
-    if !commit.body.is_empty() {
-        content_lines.push(Line::from(Span::styled(String::new(), value_style)));
-        for line in commit.body.lines() {
-            content_lines.push(Line::from(Span::styled(
-                line.to_string(),
-                value_style,
-            )));
-        }
+    for line in commit.diff.lines() {
+        let style = if line.starts_with('+') {
+            fg(&colors.diff_add)
+        } else if line.starts_with('-') {
+            fg(&colors.diff_del)
+        } else {
+            fg(&colors.diff_normal)
+        };
+        let display = if line.len() > diff_width {
+            let mut s: String = line
+                .chars()
+                .take(diff_width.saturating_sub(3))
+                .collect();
+            s.push_str(" …");
+            s
+        } else {
+            line.to_string()
+        };
+        diff_lines.push(Line::from(Span::styled(display, style)));
     }
 
-    // Diff section — drawn separator + colour-coded lines
-    if !commit.diff.is_empty() {
-        content_lines.push(Line::from(Span::styled(String::new(), dim_style)));
-        content_lines.push(Line::from(Span::styled(
-            "───── diff ────────────────────────────",
-            dim_style,
-        )));
-        content_lines.push(Line::from(Span::styled(String::new(), dim_style)));
-
-        for line in commit.diff.lines() {
-            let style = if line.starts_with('+') {
-                fg(&colors.diff_add)
-            } else if line.starts_with('-') {
-                fg(&colors.diff_del)
-            } else {
-                fg(&colors.diff_normal)
-            };
-            let display = if line.len() > content_width {
-                let mut s: String = line
-                    .chars()
-                    .take(content_width.saturating_sub(3))
-                    .collect();
-                s.push_str(" …");
-                s
-            } else {
-                line.to_string()
-            };
-            content_lines.push(Line::from(Span::styled(display, style)));
-        }
-    }
-
-    // Calculate scroll offset
-    let content_height = content_area.height as usize;
-    app.detail_content_height.set(content_height);
-    let total_lines = content_lines.len();
-    let max_scroll = total_lines.saturating_sub(content_height);
+    // Calculate scroll offset for diff only
+    let diff_height = diff_area.height as usize;
+    app.detail_content_height.set(diff_height);
+    let total_diff_lines = diff_lines.len();
+    let max_scroll = total_diff_lines.saturating_sub(diff_height);
     let scroll = app.detail_scroll.min(max_scroll);
 
-    let content = Paragraph::new(Text::from(content_lines))
+    let diff_para = Paragraph::new(Text::from(diff_lines))
         .style(Style::default().bg(bg_color))
         .scroll((scroll as u16, 0));
-    frame.render_widget(content, content_area);
+    frame.render_widget(diff_para, diff_area);
 
     // --- Close hint with optional scroll indicator ---
-    let hint_text = if total_lines > content_height {
+    let hint_text = if total_diff_lines > diff_height {
         let pct = if max_scroll > 0 {
             (scroll as f64 / max_scroll as f64 * 100.0) as u8
         } else {
