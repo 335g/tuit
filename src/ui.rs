@@ -231,13 +231,13 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     let inner = overlay.inner(overlay_area);
     frame.render_widget(overlay, overlay_area);
 
-    // Layout inside the overlay (metadata, subject, scrollable content, close hint)
+    // Layout inside the overlay (metadata, separator, scrollable content, close hint)
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3), // metadata (author, date)
-            Constraint::Length(1), // subject
-            Constraint::Min(1),    // scrollable content (body + diff)
+            Constraint::Length(1), // separator ───────
+            Constraint::Min(1),    // scrollable content (subject + body + diff)
             Constraint::Length(1), // close hint
         ])
         .split(inner);
@@ -258,42 +258,49 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     let meta = Paragraph::new(meta_line).style(Style::default().bg(bg_color));
     frame.render_widget(meta, layout[0]);
 
-    // --- Subject line ---
-    let subject = Paragraph::new(Line::from(Span::styled(
-        &commit.message,
-        value_style.add_modifier(Modifier::BOLD),
+    // --- Separator under metadata ---
+    let sep_style = Style::default().fg(Color::DarkGray);
+    let sep = Paragraph::new(Line::from(Span::styled(
+        "─".repeat(layout[1].width.max(1) as usize),
+        sep_style,
     )))
     .style(Style::default().bg(bg_color));
-    frame.render_widget(subject, layout[1]);
+    frame.render_widget(sep, layout[1]);
 
-    // --- Scrollable content (body + diff) ---
+    // --- Scrollable content (subject + body + diff) ---
     let content_area = layout[2];
     let content_width = content_area.width.saturating_sub(2) as usize;
 
     // Build combined content lines with proper styling
     let mut content_lines: Vec<Line> = Vec::new();
-    let diff_style = Style::default().fg(Color::DarkGray);
+    let dim_style = Style::default().fg(Color::DarkGray);
 
-    // Body lines
-    for line in commit.body.lines() {
-        content_lines.push(Line::from(Span::styled(
-            line.to_string(),
-            value_style,
-        )));
+    // Subject line (bold, always first in scrollable area)
+    content_lines.push(Line::from(Span::styled(
+        commit.message.clone(),
+        value_style.add_modifier(Modifier::BOLD),
+    )));
+
+    // Body lines (if any)
+    if !commit.body.is_empty() {
+        content_lines.push(Line::from(Span::styled(String::new(), value_style)));
+        for line in commit.body.lines() {
+            content_lines.push(Line::from(Span::styled(
+                line.to_string(),
+                value_style,
+            )));
+        }
     }
 
-    // Diff separator (only if there is diff content)
+    // Diff section — drawn separator + colour-coded lines
     if !commit.diff.is_empty() {
-        if !commit.body.is_empty() {
-            content_lines.push(Line::from(Span::styled(String::new(), diff_style)));
-        }
+        content_lines.push(Line::from(Span::styled(String::new(), dim_style)));
         content_lines.push(Line::from(Span::styled(
-            "─── diff ─────────────────────────────",
-            diff_style,
+            "───── diff ────────────────────────────",
+            dim_style,
         )));
-        content_lines.push(Line::from(Span::styled(String::new(), diff_style)));
+        content_lines.push(Line::from(Span::styled(String::new(), dim_style)));
 
-        // Diff lines
         for line in commit.diff.lines() {
             let style = if line.starts_with('+') {
                 fg(&colors.diff_add)
