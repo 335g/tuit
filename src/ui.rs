@@ -33,9 +33,9 @@ fn fg(hex: &str) -> Style {
 pub fn render(frame: &mut Frame, app: &App) {
     match &app.screen {
         Screen::Loading => render_loading(frame),
-        Screen::List => render_commit_list(frame, app),
+        Screen::List => render_commit_list(frame, app, false),
         Screen::Detail => {
-            render_commit_list(frame, app);
+            render_commit_list(frame, app, true);
             render_detail_overlay(frame, app);
         }
         Screen::Error(msg) => render_error(frame, msg),
@@ -56,7 +56,7 @@ fn render_loading(frame: &mut Frame) {
 }
 
 /// Render the main commit list screen.
-pub fn render_commit_list(frame: &mut Frame, app: &App) {
+pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     let colors = &app.colors;
     let area = frame.area();
 
@@ -84,6 +84,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App) {
     // --- Commit list ---
     let list_area = layout[1];
     let list_bg = hex_color(&colors.list_bg);
+    let muted_fg = Style::default().fg(Color::DarkGray);
 
     // Build list rows
     let rows: Vec<Line> = app
@@ -119,8 +120,16 @@ pub fn render_commit_list(frame: &mut Frame, app: &App) {
             };
 
             if is_selected {
-                let bg = hex_color(&colors.cursor_bg);
-                let fg_color = hex_color(&colors.cursor_fg);
+                let bg = if grayed_out {
+                    Color::Gray
+                } else {
+                    hex_color(&colors.cursor_bg)
+                };
+                let fg_color = if grayed_out {
+                    Color::Black
+                } else {
+                    hex_color(&colors.cursor_fg)
+                };
                 let base = Style::default().bg(bg).fg(fg_color);
                 Line::from(vec![
                     Span::styled(format!(" {}", cursor), base),
@@ -133,14 +142,23 @@ pub fn render_commit_list(frame: &mut Frame, app: &App) {
                 ])
             } else {
                 Line::from(vec![
-                    Span::styled(format!(" {}", cursor), Style::default().fg(Color::DarkGray)),
-                    Span::styled(format!(" {} ", commit.hash), fg(&colors.hash)),
-                    Span::styled(format!(" {} ", msg), fg(&colors.message)),
+                    Span::styled(format!(" {}", cursor), muted_fg),
+                    Span::styled(
+                        format!(" {} ", commit.hash),
+                        if grayed_out { muted_fg } else { fg(&colors.hash) },
+                    ),
+                    Span::styled(
+                        format!(" {} ", msg),
+                        if grayed_out { muted_fg } else { fg(&colors.message) },
+                    ),
                     Span::styled(
                         format!(" {}", author_padded),
-                        fg(&colors.author),
+                        if grayed_out { muted_fg } else { fg(&colors.author) },
                     ),
-                    Span::styled(format!(" {}", date_str), fg(&colors.date)),
+                    Span::styled(
+                        format!(" {}", date_str),
+                        if grayed_out { muted_fg } else { fg(&colors.date) },
+                    ),
                 ])
             }
         })
