@@ -295,6 +295,7 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     }
 
     let msg = Paragraph::new(Text::from(msg_lines))
+        .wrap(Wrap { trim: false })
         .style(Style::default().bg(bg_color));
     frame.render_widget(msg, layout[0]);
 
