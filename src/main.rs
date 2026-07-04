@@ -1,3 +1,8 @@
+mod app;
+mod config;
+mod git;
+mod ui;
+
 use std::io;
 
 use anyhow::Result;
