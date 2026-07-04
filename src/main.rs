@@ -1,11 +1,13 @@
 use std::io;
 
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
-use ratatui::backend::{Backend, CrosstermBackend};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::terminal::{
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+};
 use ratatui::Terminal;
+use ratatui::backend::{Backend, CrosstermBackend};
 
 use crate::app::{App, Screen};
 
@@ -19,7 +21,10 @@ fn main() -> Result<()> {
     enable_raw_mode()?;
     io::stdout().execute(EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
-    let res = run_app(&mut terminal, std::iter::from_fn(|| read_key().ok()).flatten());
+    let res = run_app(
+        &mut terminal,
+        std::iter::from_fn(|| read_key().ok()).flatten(),
+    );
 
     disable_raw_mode()?;
     io::stdout().execute(LeaveAlternateScreen)?;
@@ -140,7 +145,12 @@ mod e2e_tests {
             let file = path.join(format!("file-{i}.txt"));
             std::fs::write(&file, format!("content {i}")).unwrap();
             Command::new("git")
-                .args(["-C", &path.to_string_lossy(), "add", &file.to_string_lossy()])
+                .args([
+                    "-C",
+                    &path.to_string_lossy(),
+                    "add",
+                    &file.to_string_lossy(),
+                ])
                 .status()
                 .unwrap();
             Command::new("git")
@@ -286,5 +296,26 @@ mod e2e_tests {
             }
         }
         s
+    }
+
+    #[test]
+    fn detail_overlay_hides_commit_list_text() {
+        let tmp = std::env::temp_dir().join("ratty-e2e-detail-overlay");
+        init_repo(&tmp, 5);
+        let backend = run_with_events(&tmp, vec![KeyCode::Enter]);
+        let content = buf_to_string(backend.buffer());
+
+        // When detail is open for the first (most recent) commit, only its subject
+        // should be visible; the other list rows must not leak through the popup.
+        assert!(
+            content.contains("Commit subject 4"),
+            "Expected selected commit subject in buffer, got:\n{content}",
+        );
+        for i in 0..4 {
+            assert!(
+                !content.contains(&format!("Commit subject {i}")),
+                "Commit subject {i} leaked through popup:\n{content}",
+            );
+        }
     }
 }
