@@ -401,7 +401,7 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
     let inner = overlay.inner(popup_area);
     frame.render_widget(overlay, popup_area);
 
-    // Build content lines
+    // Build content lines — context-sensitive: only the current screen's bindings.
     let heading_style = Style::default()
         .fg(hex_color(&colors.detail_heading))
         .add_modifier(Modifier::BOLD);
@@ -411,41 +411,46 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
 
     let mut lines: Vec<Line> = Vec::new();
 
-    // Section helper — takes (key, description) pairs.
-    let section_data: &[(&str, &[(&str, &str)])] = &[
-        ("Global", &[
-            ("?", "Toggle this help overlay"),
-            ("q", "Quit ratty"),
-        ]),
-        ("Commit List", &[
-            ("↑ / k", "Move cursor up"),
-            ("↓ / j", "Move cursor down"),
-            ("Enter", "Show commit details"),
-        ]),
-        ("Commit Detail", &[
-            ("↑ / k", "Scroll up"),
-            ("↓ / j", "Scroll down"),
-            ("Ctrl+f / PgDn", "Scroll down one page"),
-            ("Ctrl+b / PgUp", "Scroll up one page"),
-            ("Esc", "Close detail view"),
-        ]),
-        ("Error Screen", &[
-            ("Enter", "Quit"),
-        ]),
-    ];
+    let (section_title, section_bindings): (&str, &[(&str, &str)]) = match &app.screen {
+        Screen::List => (
+            "Commit List",
+            &[
+                ("↑ / k", "Move cursor up"),
+                ("↓ / j", "Move cursor down"),
+                ("Enter", "Show commit details"),
+                ("q", "Quit ratty"),
+            ],
+        ),
+        Screen::Detail => (
+            "Commit Detail",
+            &[
+                ("↑ / k", "Scroll up"),
+                ("↓ / j", "Scroll down"),
+                ("Ctrl+f / PgDn", "Scroll down one page"),
+                ("Ctrl+b / PgUp", "Scroll up one page"),
+                ("Esc", "Close detail view"),
+            ],
+        ),
+        Screen::Error(_) => (
+            "Error",
+            &[
+                ("Enter", "Quit"),
+            ],
+        ),
+        Screen::Loading => return, // help should never appear during loading
+    };
 
-    for (title, bindings) in section_data {
-        lines.push(Line::from(Span::styled(String::new(), dim_style)));
-        lines.push(Line::from(Span::styled(
-            format!(" {} ", title),
-            heading_style,
-        )));
-        for (key_str, desc) in *bindings {
-            lines.push(Line::from(vec![
-                Span::styled(format!("   {:<14}", key_str), key_style),
-                Span::styled(desc.to_string(), desc_style),
-            ]));
-        }
+    lines.push(Line::from(Span::styled(
+        format!(" {} ", section_title),
+        heading_style,
+    )));
+    lines.push(Line::from(Span::styled(String::new(), dim_style)));
+
+    for (key_str, desc) in section_bindings {
+        lines.push(Line::from(vec![
+            Span::styled(format!("   {:<12}", key_str), key_style),
+            Span::styled(desc.to_string(), desc_style),
+        ]));
     }
 
     // Close hint
