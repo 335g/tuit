@@ -2,7 +2,7 @@ use std::io;
 
 use anyhow::Result;
 use crossterm::ExecutableCommand;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
@@ -10,6 +10,19 @@ use ratatui::Terminal;
 use ratatui::backend::{Backend, CrosstermBackend};
 
 use crate::app::{App, Screen};
+
+/// Simplified key event for the application.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Key {
+    Up,
+    Down,
+    Enter,
+    Esc,
+    PageUp,
+    PageDown,
+    Char(char),
+    Ctrl(char),
+}
 
 mod app;
 mod config;
@@ -38,10 +51,21 @@ fn main() -> Result<()> {
 }
 
 /// Read a single key event from crossterm.
-fn read_key() -> Result<Option<KeyCode>> {
+fn read_key() -> Result<Option<Key>> {
     if let Event::Key(key) = event::read()? {
         if key.kind == KeyEventKind::Press {
-            return Ok(Some(key.code));
+            let k = match key.code {
+                KeyCode::Esc => Key::Esc,
+                KeyCode::Enter => Key::Enter,
+                KeyCode::Up => Key::Up,
+                KeyCode::Down => Key::Down,
+                KeyCode::PageUp => Key::PageUp,
+                KeyCode::PageDown => Key::PageDown,
+                KeyCode::Char(c) if key.modifiers.contains(KeyModifiers::CONTROL) => Key::Ctrl(c),
+                KeyCode::Char(c) => Key::Char(c),
+                _ => return Ok(None),
+            };
+            return Ok(Some(k));
         }
     }
     Ok(None)
@@ -51,7 +75,7 @@ fn read_key() -> Result<Option<KeyCode>> {
 /// iterator.  Used by both `main()` (production) and tests (TestBackend).
 pub fn run_app<B: Backend>(
     terminal: &mut Terminal<B>,
-    events: impl Iterator<Item = KeyCode>,
+    events: impl Iterator<Item = Key>,
 ) -> Result<()>
 where
     <B as Backend>::Error: Send + Sync + 'static,
@@ -95,23 +119,25 @@ where
 }
 
 /// Process a single key-press against the current app state.
-pub fn handle_input(app: &mut App, key: KeyCode) {
+pub fn handle_input(app: &mut App, key: Key) {
     match &app.screen {
         Screen::List => match key {
-            KeyCode::Up => app.navigate_up(),
-            KeyCode::Down => app.navigate_down(),
-            KeyCode::Enter => app.select_commit(),
-            KeyCode::Char('q') => app.quit(),
+            Key::Up => app.navigate_up(),
+            Key::Down => app.navigate_down(),
+            Key::Enter => app.select_commit(),
+            Key::Char('q') => app.quit(),
             _ => {}
         },
         Screen::Detail => match key {
-            KeyCode::Esc => app.close_detail(),
-            KeyCode::Up | KeyCode::Char('k') => app.scroll_detail_up(),
-            KeyCode::Down | KeyCode::Char('j') => app.scroll_detail_down(),
+            Key::Esc => app.close_detail(),
+            Key::Up | Key::Char('k') => app.scroll_detail_up(),
+            Key::Down | Key::Char('j') => app.scroll_detail_down(),
+            Key::Ctrl('j') | Key::PageDown => app.scroll_detail_page_down(),
+            Key::Ctrl('k') | Key::PageUp => app.scroll_detail_page_up(),
             _ => {}
         },
         Screen::Error(_) => match key {
-            KeyCode::Enter => app.quit(),
+            Key::Enter => app.quit(),
             _ => {}
         },
         Screen::Loading => {
@@ -185,7 +211,7 @@ mod e2e_tests {
     }
 
     /// Run ratty against a git repo at `repo_path` with the given key events.
-    fn run_with_events(repo_path: &Path, events: Vec<KeyCode>) -> TestBackend {
+    fn run_with_events(repo_path: &Path, events: Vec<Key>) -> TestBackend {
         // Change to the repo directory before testing.
         let prev_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(repo_path).unwrap();
@@ -212,7 +238,7 @@ mod e2e_tests {
         let tmp = std::env::temp_dir().join("ratty-e2e-happy");
         init_repo(&tmp, 3);
 
-        let backend = run_with_events(&tmp, vec![KeyCode::Char('q')]);
+        let backend = run_with_events(&tmp, vec![Key::Char('q')]);
         let buf = backend.buffer();
 
         // The buffer should contain each commit's abbreviated hash and subject.
@@ -242,7 +268,7 @@ mod e2e_tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
 
-        let backend = run_with_events(&tmp, vec![KeyCode::Enter]);
+        let backend = run_with_events(&tmp, vec![Key::Enter]);
         let buf = backend.buffer();
         let content = buf_to_string(buf);
 
@@ -259,7 +285,7 @@ mod e2e_tests {
         let tmp = std::env::temp_dir().join("ratty-e2e-empty");
         init_empty_repo(&tmp);
 
-        let backend = run_with_events(&tmp, vec![KeyCode::Enter]);
+        let backend = run_with_events(&tmp, vec![Key::Enter]);
         let buf = backend.buffer();
         let content = buf_to_string(buf);
 
@@ -304,7 +330,7 @@ mod e2e_tests {
     fn detail_overlay_hides_commit_list_text() {
         let tmp = std::env::temp_dir().join("ratty-e2e-detail-overlay");
         init_repo(&tmp, 5);
-        let backend = run_with_events(&tmp, vec![KeyCode::Enter]);
+        let backend = run_with_events(&tmp, vec![Key::Enter]);
         let content = buf_to_string(backend.buffer());
 
         // When detail is open for the first (most recent) commit, only its subject
