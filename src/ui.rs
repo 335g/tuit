@@ -174,7 +174,26 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
             let cursor = if is_selected { "❯" } else { " " };
             let w = list_area.width as usize;
             let show_hash = w >= 140;
-            let reserved = if show_hash { 22 } else { 13 };
+
+            // Date field (up to date_str.width() ≤ 9)
+            let date_str = if commit.date.len() > 10 {
+                let mut s: String = commit.date.chars().take(9).collect();
+                s.push('.');
+                s
+            } else {
+                commit.date.clone()
+            };
+
+            // Compute exact reserved width so non-message content never wraps.
+            // cursor: 2 chars (" " + " " or "❯"),
+            // hash:   9 chars (" " + 7-char hash + " ") [only when show_hash],
+            // before-msg space, after-msg space, date space + date_str.
+            let cursor_part = 2usize;
+            let hash_part = if show_hash { 9usize } else { 0 };
+            let before_msg = 1usize;
+            let after_msg = 1usize;
+            let date_part = 1usize + date_str.width(); // " " + date_str
+            let reserved = cursor_part + hash_part + before_msg + after_msg + date_part;
             let max_msg_width = w.saturating_sub(reserved).max(5);
             let msg = if commit.message.len() > max_msg_width {
                 let mut s: String = commit
@@ -186,15 +205,6 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                 s
             } else {
                 commit.message.clone()
-            };
-
-            // Date field (up to 10 chars)
-            let date_str = if commit.date.len() > 10 {
-                let mut s: String = commit.date.chars().take(9).collect();
-                s.push('.');
-                s
-            } else {
-                commit.date.clone()
             };
 
             // ── Build row spans ────────────────────────────────────
