@@ -25,10 +25,15 @@ exclude = [
     ".pi/",
     ".pi-subagents/",
     ".scratch/",
+    "docs/agents/",
     ".envrc",
     "apm.yml",
     "apm.lock.yaml",
 ]
+
+[[bin]]
+name = "tuit"
+path = "src/main.rs"
 
 [dependencies]
 tokio = { version = "1.52", features = ["full"] }
