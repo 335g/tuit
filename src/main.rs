@@ -272,7 +272,7 @@ mod e2e_tests {
         let prev_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(repo_path).unwrap();
 
-        let backend = TestBackend::new(80, 24);
+        let backend = TestBackend::new(210, 24);
         let mut terminal = Terminal::new(backend).unwrap();
 
         // Override XDG_CONFIG_HOME so the test doesn't read the user's real config.
