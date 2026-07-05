@@ -141,6 +141,28 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     let list_bg = hex_color(&colors.list_bg);
     let muted_fg = Style::default().fg(Color::DarkGray);
 
+    // ── Compute scroll offset to keep selected_index visible ────
+    let viewport_height = list_area.height as usize;
+    let commits_len = app.commits.len();
+    let mut scroll = app.list_scroll.get();
+
+    // If selection drifted above the viewport, bring scroll up.
+    if app.selected_index < scroll {
+        scroll = app.selected_index;
+    }
+    // If selection drifted past the bottom edge, push scroll down.
+    if viewport_height > 0 && app.selected_index >= scroll + viewport_height {
+        scroll = app.selected_index.saturating_add(1).saturating_sub(viewport_height);
+    }
+
+    // Clamp: don't let scroll go past the last page of commits.
+    let max_scroll = commits_len.saturating_sub(viewport_height);
+    if scroll > max_scroll {
+        scroll = max_scroll;
+    }
+
+    app.list_scroll.set(scroll);
+
     // Build list rows
     let rows: Vec<Line> = app
         .commits
@@ -273,6 +295,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     let list_block = Block::default().style(Style::default().bg(list_bg));
     let list = Paragraph::new(Text::from(rows))
         .block(list_block)
+        .scroll((scroll as u16, 0))
         .wrap(Wrap { trim: false });
     frame.render_widget(list, layout[1]);
 
