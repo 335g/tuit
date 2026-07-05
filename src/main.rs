@@ -497,4 +497,35 @@ mod e2e_tests {
             );
         }
     }
+
+    #[test]
+    fn narrow_width_hides_author_and_hash() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-narrow");
+        init_repo(&tmp, 3);
+
+        // Run with 30-column terminal: neither author nor hash should be visible.
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let backend = TestBackend::new(30, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let _ = super::run_app(&mut terminal, vec![Key::Char('q')].into_iter());
+        let content = buf_to_string(terminal.backend().buffer());
+
+        std::env::set_current_dir(prev_dir).unwrap();
+
+        // Author should NOT appear (width < 45).
+        assert!(
+            !content.contains("Test User"),
+            "Author 'Test User' unexpectedly found in narrow (30-col) rendering:\n{content}",
+        );
+        // Full 7-char hex hashes should NOT appear either (width < 32 means hash hidden).
+        // Commit subjects should still be visible.
+        for i in 0..3 {
+            assert!(
+                content.contains(&format!("Commit subject {i}")),
+                "Commit subject {i} missing in 30-col rendering:\n{content}",
+            );
+        }
+    }
 }
