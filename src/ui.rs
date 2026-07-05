@@ -128,6 +128,10 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     // --- Header ---
     let header_line = Line::from(vec![
         Span::styled(" tuit ", Style::default().bold()),
+        Span::styled(
+            format!(" on {} ", app.current_branch),
+            Style::default().fg(Color::DarkGray),
+        ),
     ]);
     let header = Paragraph::new(header_line);
     frame.render_widget(header, layout[0]);

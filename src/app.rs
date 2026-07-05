@@ -46,6 +46,8 @@ pub struct App {
     pub detail_content_height: Cell<usize>,
     /// Whether the keybindings help overlay is shown.
     pub show_help: bool,
+    /// Current git branch name (e.g. `"main"`).
+    pub current_branch: String,
 
     // ── Live-sync state ──────────────────────────────────────────
     /// Transient footer notification (HEAD-move announcement).
@@ -65,6 +67,11 @@ pub struct App {
 impl App {
     /// Create a new app in the Loading state.
     pub fn new(config: Config) -> Self {
+        // Best-effort branch detection — fall back to "?" on failure.
+        let branch = git::open_repo()
+            .and_then(|repo| git::current_branch(&repo))
+            .unwrap_or_else(|_| "?".to_string());
+
         App {
             screen: Screen::Loading,
             commits: Vec::new(),
@@ -74,6 +81,7 @@ impl App {
             should_quit: false,
             detail_scroll: Cell::new(0),
             detail_content_height: Cell::new(0),
+            current_branch: branch,
             show_help: false,
             notification: None,
             polling_stopped: false,
