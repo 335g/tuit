@@ -62,7 +62,7 @@ fn render_loading(frame: &mut Frame) {
     let area = frame.area();
     let text = Paragraph::new("Loading commits...")
         .alignment(Alignment::Center)
-        .block(Block::default().title(" ratty ").borders(Borders::ALL));
+        .block(Block::default().title(" tuit ").borders(Borders::ALL));
     frame.render_widget(text, area);
 }
 
@@ -83,7 +83,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
 
     // --- Header ---
     let header_line = Line::from(vec![
-        Span::styled(" ratty ", Style::default().bold()),
+        Span::styled(" tuit ", Style::default().bold()),
         Span::styled("  q:quit", Style::default().fg(Color::DarkGray)),
     ]);
     let header = Paragraph::new(header_line);
@@ -443,7 +443,7 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
                 ("^ / k", "Move cursor up"),
                 ("v / j", "Move cursor down"),
                 ("Enter", "Show commit details"),
-                ("q", "Quit ratty"),
+                ("q", "Quit tuit"),
             ],
         ),
         Screen::Detail => (
@@ -589,7 +589,7 @@ pub fn render_notification(frame: &mut Frame, app: &App) {
 pub fn render_error(frame: &mut Frame, msg: &str) {
     let area = frame.area();
 
-    let block = Block::default().title(" ratty ").borders(Borders::ALL);
+    let block = Block::default().title(" tuit ").borders(Borders::ALL);
 
     let inner = block.inner(area);
     frame.render_widget(block, area);

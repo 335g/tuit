@@ -24,7 +24,7 @@ pub struct Commit {
 
 /// Open the current directory as a git repository.
 pub fn open_repo() -> Result<gix::Repository> {
-    gix::open(".").context("ratty は git リポジトリの中で実行してください。")
+    gix::open(".").context("tuit は git リポジトリの中で実行してください。")
 }
 
 /// Return the hex string of the HEAD commit OID from an already-opened repository.
