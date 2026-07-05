@@ -162,6 +162,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     }
 
     app.list_scroll.set(scroll);
+    app.list_content_height.set(viewport_height);
 
     // Build list rows
     let rows: Vec<Line> = app
@@ -300,7 +301,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     frame.render_widget(list, layout[1]);
 
     // --- Footer ---
-    let footer_text = " ^/k up | v/j down | Enter detail | q quit ";
+    let footer_text = " ^/k up | v/j down | Ctrl+f/b pg | Enter detail | q quit ";
     let footer = Paragraph::new(Line::from(Span::styled(
         footer_text,
         Style::default().fg(Color::DarkGray),
@@ -546,6 +547,8 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
             &[
                 ("^ / k", "Move cursor up"),
                 ("v / j", "Move cursor down"),
+                ("Ctrl+f", "Page down"),
+                ("Ctrl+b", "Page up"),
                 ("Enter", "Show commit details"),
                 ("q", "Quit tuit"),
             ],

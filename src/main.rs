@@ -176,6 +176,8 @@ pub fn handle_input(app: &mut App, key: Key) {
         Screen::List => match key {
             Key::Up | Key::Char('k') => app.navigate_up(),
             Key::Down | Key::Char('j') => app.navigate_down(),
+            Key::Ctrl('f') | Key::PageDown => app.navigate_page_down(),
+            Key::Ctrl('b') | Key::PageUp => app.navigate_page_up(),
             Key::Enter => app.select_commit(),
             Key::Char('q') => app.quit(),
             _ => {}

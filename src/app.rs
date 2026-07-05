@@ -39,6 +39,8 @@ pub struct App {
     pub commits: Vec<Commit>,
     pub selected_index: usize,
     pub list_scroll: Cell<usize>,
+    /// Height of the list viewport (updated by render for page-scroll calculations).
+    pub list_content_height: Cell<usize>,
     pub selected_commit: Option<Commit>,
     pub colors: config::Colors,
     pub should_quit: bool,
@@ -78,6 +80,7 @@ impl App {
             commits: Vec::new(),
             selected_index: 0,
             list_scroll: Cell::new(0),
+            list_content_height: Cell::new(0),
             selected_commit: None,
             colors: config.colors,
             should_quit: false,
@@ -274,6 +277,23 @@ impl App {
             if self.selected_index < self.commits.len().saturating_sub(1) {
                 self.selected_index += 1;
             }
+        }
+    }
+
+    /// Move selection up by one page in the commit list.
+    pub fn navigate_page_up(&mut self) {
+        if self.screen == Screen::List && !self.commits.is_empty() {
+            let page = self.list_content_height.get().max(1);
+            self.selected_index = self.selected_index.saturating_sub(page);
+        }
+    }
+
+    /// Move selection down by one page in the commit list.
+    pub fn navigate_page_down(&mut self) {
+        if self.screen == Screen::List && !self.commits.is_empty() {
+            let page = self.list_content_height.get().max(1);
+            let max_index = self.commits.len().saturating_sub(1);
+            self.selected_index = (self.selected_index + page).min(max_index);
         }
     }
 
