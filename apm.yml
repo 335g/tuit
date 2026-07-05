@@ -1,6 +1,6 @@
-name: ratty
+name: tuit
 version: 1.0.0
-description: APM project for ratty
+description: APM project for tuit
 author: Yoshiki Kudo
 targets:
 - agent-skills
