@@ -6,11 +6,17 @@
 
 ## インストール
 
+### crates.io からインストール
+
+```bash
+cargo install tuit-bin
+```
+
 ### 前提条件
 
 - [Rust](https://www.rust-lang.org/) ツールチェーン (edition 2024、Rust 1.85 以降推奨)
 
-### ビルド
+### ソースからビルド
 
 ```bash
 git clone https://github.com/yoshikikudo/tuit.git
