@@ -1,7 +1,4 @@
 {
   "lang": "ja",
-  "no_nody": true,
-  "commitEveryTurn": {
-    "trigger": "turn_end"
-  }
+  "commitEveryTurn": true
 }
