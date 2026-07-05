@@ -131,47 +131,18 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
             let cursor = if is_selected { "❯" } else { " " };
             let w = list_area.width as usize;
             let show_hash = w >= 140;
-            let hash_width = if show_hash { 9usize } else { 0 };
-
-            // Parse conventional commit prefix.
-            let cc = parse_cc(&commit.message);
-            // Width occupied by type + scope columns (0 when not conventional).
-            let cc_prefix_width = if cc.is_some() { 9 + 14 } else { 0 };
-
-            // Non-description reserved width:
-            //   cursor(2) + hash(9) + cc_prefix + date(11)
-            let reserved = 2 + hash_width + cc_prefix_width + 11;
-            let max_desc_width = w.saturating_sub(reserved).max(5);
-
-            // Resolve display description (truncated to fit).
-            let (display_desc, cc_type, cc_scope, cc_breaking) = match cc {
-                Some((r#type, scope, breaking, desc)) => {
-                    let display = if desc.len() > max_desc_width {
-                        let mut s: String = desc
-                            .chars()
-                            .take(max_desc_width.saturating_sub(1))
-                            .collect();
-                        s.push('.');
-                        s
-                    } else {
-                        desc.to_string()
-                    };
-                    (display, Some(r#type.to_string()), scope.map(String::from), breaking)
-                }
-                None => {
-                    let display = if commit.message.len() > max_desc_width {
-                        let mut s: String = commit
-                            .message
-                            .chars()
-                            .take(max_desc_width.saturating_sub(1))
-                            .collect();
-                        s.push('.');
-                        s
-                    } else {
-                        commit.message.clone()
-                    };
-                    (display, None, None, false)
-                }
+            let reserved = if show_hash { 22 } else { 13 };
+            let max_msg_width = w.saturating_sub(reserved).max(5);
+            let msg = if commit.message.len() > max_msg_width {
+                let mut s: String = commit
+                    .message
+                    .chars()
+                    .take(max_msg_width.saturating_sub(1))
+                    .collect();
+                s.push('.');
+                s
+            } else {
+                commit.message.clone()
             };
 
             // Date field (up to 10 chars)
@@ -202,24 +173,22 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                 if show_hash {
                     spans.push(Span::styled(format!(" {} ", commit.hash), base));
                 }
-                // Conventional-commit prefix
-                if let Some(r#type) = &cc_type {
-                    spans.push(Span::styled(
-                        format!("{:<9}", r#type),
-                        base.add_modifier(Modifier::BOLD),
-                    ));
-                    match &cc_scope {
-                        Some(s) => spans.push(Span::styled(format!("{:<14}", s), base)),
-                        None => spans.push(Span::styled(format!("{:<14}", ""), base)),
+                // Message with conventional-commit highlighting
+                spans.push(Span::styled(" ", base));
+                if let Some((cc_type, cc_scope, cc_breaking, cc_desc)) = parse_cc(&msg) {
+                    spans.push(Span::styled(cc_type.to_string(), base.add_modifier(Modifier::BOLD)));
+                    if let Some(scope) = cc_scope {
+                        spans.push(Span::styled(format!("({})", scope), base));
                     }
                     if cc_breaking {
-                        spans.push(Span::styled(
-                            "!",
-                            base.fg(Color::Red),
-                        ));
+                        spans.push(Span::styled("!", base.fg(Color::Red)));
                     }
+                    let rest = if cc_desc.is_empty() { String::new() } else { format!(": {}", cc_desc) };
+                    spans.push(Span::styled(rest, base));
+                } else {
+                    spans.push(Span::styled(msg.clone(), base));
                 }
-                spans.push(Span::styled(format!(" {} ", display_desc), base));
+                spans.push(Span::styled(" ", base));
                 spans.push(Span::styled(format!(" {}", date_str), base));
                 Line::from(spans)
             } else {
@@ -232,37 +201,38 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                         if grayed_out { muted_fg } else { fg(&colors.hash) },
                     ));
                 }
-                // Conventional-commit prefix
-                if let Some(r#type) = &cc_type {
-                    spans.push(Span::styled(
-                        format!("{:<9}", r#type),
-                        if grayed_out {
+                // Message with conventional-commit highlighting
+                let msg_style = if grayed_out { muted_fg } else { fg(&colors.message) };
+                spans.push(Span::styled(" ", msg_style));
+                if let Some((cc_type, cc_scope, cc_breaking, cc_desc)) = parse_cc(&msg) {
+                    let type_style = if grayed_out {
+                        muted_fg
+                    } else {
+                        fg(&colors.hash).add_modifier(Modifier::BOLD)
+                    };
+                    spans.push(Span::styled(cc_type.to_string(), type_style));
+                    if let Some(scope) = cc_scope {
+                        let scope_style = if grayed_out {
                             muted_fg
                         } else {
-                            fg(&colors.hash).add_modifier(Modifier::BOLD)
-                        },
-                    ));
-                    match &cc_scope {
-                        Some(s) => spans.push(Span::styled(
-                            format!("{:<14}", s),
-                            if grayed_out { muted_fg } else { Style::default().fg(Color::DarkGray) },
-                        )),
-                        None => spans.push(Span::styled(
-                            format!("{:<14}", ""),
-                            Style::default(),
-                        )),
+                            Style::default().fg(Color::DarkGray)
+                        };
+                        spans.push(Span::styled(format!("({})", scope), scope_style));
                     }
                     if cc_breaking {
-                        spans.push(Span::styled(
-                            "!",
-                            if grayed_out { muted_fg } else { fg(&colors.diff_del) },
-                        ));
+                        let br_style = if grayed_out {
+                            muted_fg
+                        } else {
+                            fg(&colors.diff_del)
+                        };
+                        spans.push(Span::styled("!", br_style));
                     }
+                    let rest = if cc_desc.is_empty() { String::new() } else { format!(": {}", cc_desc) };
+                    spans.push(Span::styled(rest, msg_style));
+                } else {
+                    spans.push(Span::styled(msg.clone(), msg_style));
                 }
-                spans.push(Span::styled(
-                    format!(" {} ", display_desc),
-                    if grayed_out { muted_fg } else { fg(&colors.message) },
-                ));
+                spans.push(Span::styled(" ", msg_style));
                 spans.push(Span::styled(
                     format!(" {}", date_str),
                     if grayed_out { muted_fg } else { fg(&colors.date) },
