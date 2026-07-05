@@ -1,8 +1,34 @@
 [package]
-name = "tuit"
+name = "tuit-bin"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+description = "A TUI git log viewer built with ratatui and gix (gitoxide)"
+repository = "https://github.com/yoshikikudo/tuit.git"
+homepage = "https://github.com/yoshikikudo/tuit"
+documentation = "https://docs.rs/tuit-bin"
+readme = "README.md"
+rust-version = "1.85"
+categories = [
+    "command-line-utilities",
+    "development-tools::git",
+]
+keywords = [
+    "git",
+    "tui",
+    "log",
+    "ratatui",
+    "gitoxide",
+]
+exclude = [
+    ".agents/",
+    ".pi/",
+    ".pi-subagents/",
+    ".scratch/",
+    ".envrc",
+    "apm.yml",
+    "apm.lock.yaml",
+]
 
 [dependencies]
 tokio = { version = "1.52", features = ["full"] }
