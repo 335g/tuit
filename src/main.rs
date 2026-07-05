@@ -266,7 +266,7 @@ mod e2e_tests {
             .unwrap();
     }
 
-    /// Run ratty against a git repo at `repo_path` with the given key events.
+    /// Run tuit against a git repo at `repo_path` with the given key events.
     fn run_with_events(repo_path: &Path, events: Vec<Key>) -> TestBackend {
         // Change to the repo directory before testing.
         let prev_dir = std::env::current_dir().unwrap();
@@ -276,7 +276,7 @@ mod e2e_tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         // Override XDG_CONFIG_HOME so the test doesn't read the user's real config.
-        let config_home = repo_path.join(".ratty-config");
+        let config_home = repo_path.join(".tuit-config");
         std::fs::create_dir_all(&config_home).unwrap();
         // We can't easily override this in-process, but config::load() will
         // fall back to defaults when no files exist, which is fine.
@@ -291,7 +291,7 @@ mod e2e_tests {
 
     #[test]
     fn happy_path_commit_list_shows_all_commits() {
-        let tmp = std::env::temp_dir().join("ratty-e2e-happy");
+        let tmp = std::env::temp_dir().join("tuit-e2e-happy");
         init_repo(&tmp, 3);
 
         let backend = run_with_events(&tmp, vec![Key::Char('q')]);
@@ -320,7 +320,7 @@ mod e2e_tests {
 
     #[test]
     fn non_git_directory_shows_error() {
-        let tmp = std::env::temp_dir().join("ratty-e2e-non-git");
+        let tmp = std::env::temp_dir().join("tuit-e2e-non-git");
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
 
@@ -331,14 +331,14 @@ mod e2e_tests {
         // The error message may have spacing artifacts in buffer concatenation.
         let stripped: String = content.chars().filter(|c| !c.is_whitespace()).collect();
         assert!(
-            stripped.contains("rattyはgitリポジトリの中で実行してください"),
+            stripped.contains("tuitはgitリポジトリの中で実行してください"),
             "Expected error message, got:\n{content}",
         );
     }
 
     #[test]
     fn empty_repository_shows_empty_message() {
-        let tmp = std::env::temp_dir().join("ratty-e2e-empty");
+        let tmp = std::env::temp_dir().join("tuit-e2e-empty");
         init_empty_repo(&tmp);
 
         let backend = run_with_events(&tmp, vec![Key::Enter]);
@@ -384,7 +384,7 @@ mod e2e_tests {
 
     #[test]
     fn poll_detects_new_commit() {
-        let tmp = std::env::temp_dir().join("ratty-e2e-poll-new");
+        let tmp = std::env::temp_dir().join("tuit-e2e-poll-new");
         init_repo(&tmp, 2);
 
         let prev_dir = std::env::current_dir().unwrap();
@@ -443,7 +443,7 @@ mod e2e_tests {
 
     #[test]
     fn poll_timestamps_update_in_detail() {
-        let tmp = std::env::temp_dir().join("ratty-e2e-poll-detail-time");
+        let tmp = std::env::temp_dir().join("tuit-e2e-poll-detail-time");
         init_repo(&tmp, 1);
 
         let prev_dir = std::env::current_dir().unwrap();
@@ -479,7 +479,7 @@ mod e2e_tests {
 
     #[test]
     fn detail_overlay_hides_commit_list_text() {
-        let tmp = std::env::temp_dir().join("ratty-e2e-detail-overlay");
+        let tmp = std::env::temp_dir().join("tuit-e2e-detail-overlay");
         init_repo(&tmp, 5);
         let backend = run_with_events(&tmp, vec![Key::Enter]);
         let content = buf_to_string(backend.buffer());
