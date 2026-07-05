@@ -8,12 +8,13 @@ use ratatui::{
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::{AlertKind, App, Screen};
+use crate::config::Colors;
 
 // ── Conventional commit helpers ─────────────────────────────────────
 
 /// Parse a conventional commit subject.
 /// Returns `(type, scope, breaking, description)` or `None`.
-fn parse_cc<'a>(message: &'a str) -> Option<(&'a str, Option<&'a str>, bool, &'a str)> {
+fn parse_cc(message: &str) -> Option<(&str, Option<&str>, bool, &str)> {
     let colon = message.find(':')?;
     let prefix = message[..colon].trim_end();
     let desc = message[colon + 1..].trim_start();
@@ -34,6 +35,22 @@ fn parse_cc<'a>(message: &'a str) -> Option<(&'a str, Option<&'a str>, bool, &'a
 
     let r#type = clean.trim();
     if r#type.is_empty() { None } else { Some((r#type, None, breaking, desc)) }
+}
+
+/// Return the configured hex colour for a conventional-commit type.
+fn cc_type_color<'a>(colors: &'a Colors, type_name: &str) -> &'a str {
+    match type_name {
+        "feat" => &colors.cc_type_feat,
+        "fix" => &colors.cc_type_fix,
+        "docs" => &colors.cc_type_docs,
+        "style" => &colors.cc_type_style,
+        "refactor" => &colors.cc_type_refactor,
+        "perf" => &colors.cc_type_perf,
+        "test" => &colors.cc_type_test,
+        "chore" => &colors.cc_type_chore,
+        // Unknown type: use chore colour so it still looks intentional
+        _ => &colors.cc_type_chore,
+    }
 }
 
 /// Convert a hex colour string (e.g. "#89b4fa") to a ratatui Color.
@@ -176,7 +193,15 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                 // Message with conventional-commit highlighting
                 spans.push(Span::styled(" ", base));
                 if let Some((cc_type, cc_scope, cc_breaking, cc_desc)) = parse_cc(&msg) {
-                    spans.push(Span::styled(cc_type.to_string(), base.add_modifier(Modifier::BOLD)));
+                    let type_color = if grayed_out {
+                        Color::Black
+                    } else {
+                        hex_color(cc_type_color(&colors, cc_type))
+                    };
+                    spans.push(Span::styled(
+                        cc_type.to_string(),
+                        Style::default().bg(bg).fg(type_color).add_modifier(Modifier::BOLD),
+                    ));
                     if let Some(scope) = cc_scope {
                         spans.push(Span::styled(format!("({})", scope), base));
                     }
@@ -208,7 +233,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                     let type_style = if grayed_out {
                         muted_fg
                     } else {
-                        fg(&colors.hash).add_modifier(Modifier::BOLD)
+                        fg(cc_type_color(&colors, cc_type)).add_modifier(Modifier::BOLD)
                     };
                     spans.push(Span::styled(cc_type.to_string(), type_style));
                     if let Some(scope) = cc_scope {
