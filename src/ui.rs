@@ -105,14 +105,12 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
             let cursor = if is_selected { "❯" } else { " " };
 
             // Decide which fields fit based on available width.
-            // Fields and their visual widths:
-            //   cursor (2) + hash (9) + author (13) + date (11) = 35 all in.
-            //   Without author:   22 overhead.
-            //   Without hash:     13 overhead (cursor + date).
-            // We give message at least 10 chars.
+            //   ≥ 200 → show all fields
+            //   ≥ 180 → show everything except author
+            //   < 180 → show only message + date (hide hash + author)
             let w = list_area.width as usize;
-            let show_hash   = w >= 10 + 11 + 2 + 9;      // msg(10)+date(11)+cursor(2)+hash(9) = 32
-            let show_author = w >= 10 + 11 + 2 + 9 + 13; // + author(13) = 45
+            let show_author = w >= 200;
+            let show_hash   = w >= 180;
             let reserved = if show_author { 35 } else if show_hash { 22 } else { 13 };
             let max_msg_width = w.saturating_sub(reserved).max(5);
             let msg = if commit.message.len() > max_msg_width {
