@@ -86,20 +86,20 @@ pub fn default_colors() -> Colors {
     }
 }
 
-/// Resolve the config directory (`~/.config/ratty/`) using the `directories` crate.
+/// Resolve the config directory (`~/.config/tuit/`) using the `directories` crate.
 fn config_dir() -> PathBuf {
     directories::BaseDirs::new()
-        .map(|d| d.config_dir().join("ratty"))
+        .map(|d| d.config_dir().join("tuit"))
         .unwrap_or_else(|| {
-            // Fallback: use $XDG_CONFIG_HOME/ratty or ~/.config/ratty
+            // Fallback: use $XDG_CONFIG_HOME/tuit or ~/.config/tuit
             let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-            PathBuf::from(home).join(".config").join("ratty")
+            PathBuf::from(home).join(".config").join("tuit")
         })
 }
 
 /// Load configuration and colors.
 ///
-/// 1. Reads `~/.config/ratty/config.toml` (optional).
+/// 1. Reads `~/.config/tuit/config.toml` (optional).
 /// 2. Reads the theme file specified in config (optional).
 /// 3. Falls back to hard-coded defaults for anything missing.
 pub fn load() -> Result<Config> {
