@@ -104,14 +104,11 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
 
             let cursor = if is_selected { "❯" } else { " " };
 
-            // Decide which fields fit based on available width.
-            //   ≥ 200 → show all fields
-            //   ≥ 180 → show everything except author
-            //   < 180 → show only message + date (hide hash + author)
+            //   ≥ 140 → show hash, otherwise hide it
+            //   user.name is never shown in the commit list.
             let w = list_area.width as usize;
-            let show_author = w >= 200;
-            let show_hash   = w >= 180;
-            let reserved = if show_author { 35 } else if show_hash { 22 } else { 13 };
+            let show_hash = w >= 140;
+            let reserved = if show_hash { 22 } else { 13 };
             let max_msg_width = w.saturating_sub(reserved).max(5);
             let msg = if commit.message.len() > max_msg_width {
                 let mut s: String = commit
@@ -124,10 +121,6 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
             } else {
                 commit.message.clone()
             };
-
-            // Author padding
-            let author_pad = 12usize.saturating_sub(commit.author.len());
-            let author_padded = format!("{}{}", " ".repeat(author_pad), commit.author);
 
             // Date field (up to 10 chars)
             let date_str = if commit.date.len() > 10 {
@@ -157,11 +150,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                     spans.push(Span::styled(format!(" {} ", commit.hash), base));
                 }
                 spans.push(Span::styled(format!(" {} ", msg), base));
-                if show_author {
-                    spans.push(Span::styled(format!(" {} {}", author_padded, date_str), base));
-                } else {
-                    spans.push(Span::styled(format!(" {}", date_str), base));
-                }
+                spans.push(Span::styled(format!(" {}", date_str), base));
                 Line::from(spans)
             } else {
                 let mut spans = vec![
@@ -177,12 +166,6 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                     format!(" {} ", msg),
                     if grayed_out { muted_fg } else { fg(&colors.message) },
                 ));
-                if show_author {
-                    spans.push(Span::styled(
-                        format!(" {}", author_padded),
-                        if grayed_out { muted_fg } else { fg(&colors.author) },
-                    ));
-                }
                 spans.push(Span::styled(
                     format!(" {}", date_str),
                     if grayed_out { muted_fg } else { fg(&colors.date) },
