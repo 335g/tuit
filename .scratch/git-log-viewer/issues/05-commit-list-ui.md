@@ -11,7 +11,7 @@ Implement the main commit list screen in `src/ui.rs` using ratatui. This is the 
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  ratty                                          q:quit │
+│  tuit                                          q:quit │
 ├─────────────────────────────────────────────────────┤
 │                                                       │
 │   abc1234 Add feature X                        Alice  3d ago │
@@ -26,7 +26,7 @@ Implement the main commit list screen in `src/ui.rs` using ratatui. This is the 
 ## Implementation
 
 ### Header bar
-- Left: "ratty" (styled with app name emphasis)
+- Left: "tuit" (styled with app name emphasis)
 - Right: "q:quit" (dimmed)
 - Use `ratatui::widgets::Paragraph` or inline `Span`s
 

@@ -21,7 +21,7 @@ Type: task
 > 
 > 1. **Happy path: commit list**
 >    - Create a repo with 3 commits.
->    - Run `ratty` and immediately quit.
+>    - Run `tuit` and immediately quit.
 >    - Assert that the buffer contains the abbreviated hashes and subject lines of all 3 commits.
 > 
 > 2. **Cursor movement**
@@ -37,17 +37,17 @@ Type: task
 >    - Assert that the overlay is gone and the Commit List is visible again.
 > 
 > 4. **Non-git directory**
->    - Run `ratty` in a directory with no `.git`.
->    - Assert that the buffer contains the error message "ratty は git リポジトリの中で実行してください。".
+>    - Run `tuit` in a directory with no `.git`.
+>    - Assert that the buffer contains the error message "tuit は git リポジトリの中で実行してください。".
 > 
 > 5. **Empty repository**
 >    - Create an empty git repo (no commits).
->    - Run `ratty`.
+>    - Run `tuit`.
 >    - Assert that the buffer contains "このリポジトリにはまだコミットがありません。".
 > 
 > 6. **Custom theme**
->    - Create a temporary `~/.config/ratty/config.toml` referencing a custom theme and a matching theme file in `~/.config/ratty/themes/`.
->    - Run `ratty` with 1 commit.
+>    - Create a temporary `~/.config/tuit/config.toml` referencing a custom theme and a matching theme file in `~/.config/tuit/themes/`.
+>    - Run `tuit` with 1 commit.
 >    - Assert that the rendered colors match the theme (using `TestBackend::buffer()` cell colors).
 > 
 > ## Implementation notes

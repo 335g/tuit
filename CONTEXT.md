@@ -1,4 +1,4 @@
-# ratty
+# tuit
 
 A TUI git log viewer built with ratatui. Displays a scrollable list of commits and allows selecting one to view its full details.
 

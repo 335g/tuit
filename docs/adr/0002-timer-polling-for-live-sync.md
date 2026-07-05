@@ -5,7 +5,7 @@ Date: 2026-07-05
 
 # Timer-based polling for live sync instead of filesystem watching
 
-ratty needs to keep its commit list and detail view in sync with the underlying git repository while running. We chose a fixed-interval timer polling strategy (re-calling `gix::open` + revision walk every 2 s by default) over filesystem watching via `notify`.
+tuit needs to keep its commit list and detail view in sync with the underlying git repository while running. We chose a fixed-interval timer polling strategy (re-calling `gix::open` + revision walk every 2 s by default) over filesystem watching via `notify`.
 
 ## Why
 

@@ -5,7 +5,7 @@ Type: task
 
 ## Goal
 
-Replace the existing Hello World TUI loop in `main.rs` with the full ratty application, connecting all modules.
+Replace the existing Hello World TUI loop in `main.rs` with the full tuit application, connecting all modules.
 
 ## Main flow
 
@@ -20,7 +20,7 @@ pub fn run_app<B: Backend, I: Iterator<Item = KeyEvent>>(
 ```
 
 This function:
-1. Loads config and colors from `~/.config/ratty/`.
+1. Loads config and colors from `~/.config/tuit/`.
 2. Initializes `App` state and loads commits from `working_dir`.
 3. Runs the event loop: read the next event, update app state, draw the frame.
 4. Returns when `app.should_quit` becomes true.

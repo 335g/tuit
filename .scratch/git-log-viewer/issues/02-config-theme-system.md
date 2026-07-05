@@ -5,7 +5,7 @@ Type: task
 
 ## Goal
 
-Implement the config/theme loading layer (`src/config.rs`). The system reads `~/.config/ratty/config.toml` which specifies a `theme` name, then loads the corresponding theme from `~/.config/ratty/themes/<name>.toml`. If neither file exists, use hard-coded default colors.
+Implement the config/theme loading layer (`src/config.rs`). The system reads `~/.config/tuit/config.toml` which specifies a `theme` name, then loads the corresponding theme from `~/.config/tuit/themes/<name>.toml`. If neither file exists, use hard-coded default colors.
 
 ## Details
 
@@ -65,7 +65,7 @@ pub struct Config {
 
 ### Behavior
 
-1. Resolve `~/.config/ratty/` via the `directories` crate.
+1. Resolve `~/.config/tuit/` via the `directories` crate.
 2. Try to read `config.toml` — if absent, use default values.
 3. Try to read `themes/<name>.toml` — if absent, use default colors.
 4. Return a `Config` struct with all resolved values.
@@ -84,4 +84,4 @@ A reasonable light-on-dark scheme (e.g., inspired by Catppuccin Mocha as shown a
 
 ## Testing note
 
-This module is exercised indirectly through the single end-to-end seam: tests run ratty in a temp directory with controlled `~/.config/ratty/` files and assert on rendered output colors.
+This module is exercised indirectly through the single end-to-end seam: tests run tuit in a temp directory with controlled `~/.config/tuit/` files and assert on rendered output colors.

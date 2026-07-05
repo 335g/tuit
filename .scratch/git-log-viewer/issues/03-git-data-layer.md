@@ -60,4 +60,4 @@ A helper function to convert a timestamp to a human-readable relative string:
 
 ## Testing note
 
-This module is exercised indirectly through the single end-to-end seam: tests run ratty inside temporary git repositories and assert on the rendered Commit List and Commit Detail.
+This module is exercised indirectly through the single end-to-end seam: tests run tuit inside temporary git repositories and assert on the rendered Commit List and Commit Detail.

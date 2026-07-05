@@ -5,7 +5,7 @@ Type: task
 
 ## Goal
 
-Implement the error screen in `src/ui.rs` for cases where ratty cannot operate (not a git repo, empty repo, corrupt .git, permission error).
+Implement the error screen in `src/ui.rs` for cases where tuit cannot operate (not a git repo, empty repo, corrupt .git, permission error).
 
 ## Layout
 
@@ -14,7 +14,7 @@ Implement the error screen in `src/ui.rs` for cases where ratty cannot operate (
 │                                                     │
 │                    ⚠  Error                         │
 │                                                     │
-│    ratty は git リポジトリの中で実行してください。    │
+│    tuit は git リポジトリの中で実行してください。    │
 │                                                     │
 │    [Enter] exit                                      │
 │                                                     │
@@ -25,7 +25,7 @@ Implement the error screen in `src/ui.rs` for cases where ratty cannot operate (
 
 | Case | Message |
 |------|---------|
-| Not a git repo | "ratty は git リポジトリの中で実行してください。" |
+| Not a git repo | "tuit は git リポジトリの中で実行してください。" |
 | Empty repo (0 commits) | "このリポジトリにはまだコミットがありません。" |
 | Corrupt .git | "git リポジトリが壊れています: {detail}" |
 | Permission error | "git リポジトリを読み込めません: {detail}" |

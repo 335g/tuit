@@ -13,7 +13,7 @@ Set up the module structure and add all required dependencies so subsequent issu
    - `gix` (latest)
    - `toml` with serde feature
    - `serde` with derive feature
-   - `directories` (for `~/.config/ratty/` path resolution)
+   - `directories` (for `~/.config/tuit/` path resolution)
    
 2. Create the module files:
    - `src/app.rs` — application state management (skeleton with TODO)
