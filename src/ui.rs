@@ -105,7 +105,10 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
             let cursor = if is_selected { "❯" } else { " " };
 
             // Truncate message to fit available width
-            let max_msg_width = list_area.width.saturating_sub(35).max(5) as usize;
+            // When terminal is narrow (< 60 cols), drop author field to save space.
+            let show_author = list_area.width >= 60;
+            let reserved = if show_author { 35 } else { 22 };
+            let max_msg_width = list_area.width.saturating_sub(reserved).max(5) as usize;
             let msg = if commit.message.len() > max_msg_width {
                 let mut s: String = commit
                     .message
@@ -143,14 +146,19 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                     hex_color(&colors.cursor_fg)
                 };
                 let base = Style::default().bg(bg).fg(fg_color);
-                Line::from(vec![
+                let mut spans = vec![
                     Span::styled(format!(" {}", cursor), base),
                     Span::styled(format!(" {} ", commit.hash), base),
                     Span::styled(format!(" {} ", msg), base),
-                    Span::styled(format!(" {} {}", author_padded, date_str), base),
-                ])
+                ];
+                if show_author {
+                    spans.push(Span::styled(format!(" {} {}", author_padded, date_str), base));
+                } else {
+                    spans.push(Span::styled(format!(" {}", date_str), base));
+                }
+                Line::from(spans)
             } else {
-                Line::from(vec![
+                let mut spans = vec![
                     Span::styled(format!(" {}", cursor), muted_fg),
                     Span::styled(
                         format!(" {} ", commit.hash),
@@ -168,23 +176,26 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                             fg(&colors.message)
                         },
                     ),
-                    Span::styled(
+                ];
+                if show_author {
+                    spans.push(Span::styled(
                         format!(" {}", author_padded),
                         if grayed_out {
                             muted_fg
                         } else {
                             fg(&colors.author)
                         },
-                    ),
-                    Span::styled(
-                        format!(" {}", date_str),
-                        if grayed_out {
-                            muted_fg
-                        } else {
-                            fg(&colors.date)
-                        },
-                    ),
-                ])
+                    ));
+                }
+                spans.push(Span::styled(
+                    format!(" {}", date_str),
+                    if grayed_out {
+                        muted_fg
+                    } else {
+                        fg(&colors.date)
+                    },
+                ));
+                Line::from(spans)
             }
         })
         .collect();
