@@ -21,6 +21,15 @@ pub struct Colors {
     pub diff_add: String,
     pub diff_del: String,
     pub diff_normal: String,
+    // Conventional-commit type colours
+    pub cc_type_feat: String,
+    pub cc_type_fix: String,
+    pub cc_type_docs: String,
+    pub cc_type_style: String,
+    pub cc_type_refactor: String,
+    pub cc_type_perf: String,
+    pub cc_type_test: String,
+    pub cc_type_chore: String,
 }
 
 /// Application-level configuration.
@@ -64,6 +73,14 @@ struct ThemeColors {
     diff_add: Option<String>,
     diff_del: Option<String>,
     diff_normal: Option<String>,
+    cc_type_feat: Option<String>,
+    cc_type_fix: Option<String>,
+    cc_type_docs: Option<String>,
+    cc_type_style: Option<String>,
+    cc_type_refactor: Option<String>,
+    cc_type_perf: Option<String>,
+    cc_type_test: Option<String>,
+    cc_type_chore: Option<String>,
 }
 
 /// Default color palette (Catppuccin Mocha inspired).
@@ -83,6 +100,14 @@ pub fn default_colors() -> Colors {
         diff_add: "#a6e3a1".into(),
         diff_del: "#f38ba8".into(),
         diff_normal: "#bac2de".into(),
+        cc_type_feat: "#89b4fa".into(),   // blue
+        cc_type_fix: "#f38ba8".into(),    // red
+        cc_type_docs: "#cba6f7".into(),   // mauve
+        cc_type_style: "#f5c2e7".into(),  // pink
+        cc_type_refactor: "#fab387".into(), // peach
+        cc_type_perf: "#f9e2af".into(),   // yellow
+        cc_type_test: "#94e2d5".into(),   // teal
+        cc_type_chore: "#6c7086".into(),  // gray
     }
 }
 
@@ -163,6 +188,14 @@ fn merge_colors(default: Colors, theme: Option<ThemeColors>) -> Colors {
             diff_add: t.diff_add.unwrap_or(default.diff_add),
             diff_del: t.diff_del.unwrap_or(default.diff_del),
             diff_normal: t.diff_normal.unwrap_or(default.diff_normal),
+            cc_type_feat: t.cc_type_feat.unwrap_or(default.cc_type_feat),
+            cc_type_fix: t.cc_type_fix.unwrap_or(default.cc_type_fix),
+            cc_type_docs: t.cc_type_docs.unwrap_or(default.cc_type_docs),
+            cc_type_style: t.cc_type_style.unwrap_or(default.cc_type_style),
+            cc_type_refactor: t.cc_type_refactor.unwrap_or(default.cc_type_refactor),
+            cc_type_perf: t.cc_type_perf.unwrap_or(default.cc_type_perf),
+            cc_type_test: t.cc_type_test.unwrap_or(default.cc_type_test),
+            cc_type_chore: t.cc_type_chore.unwrap_or(default.cc_type_chore),
         },
     }
 }
@@ -182,6 +215,14 @@ mod tests {
         assert_eq!(colors.diff_add, "#a6e3a1");
         assert_eq!(colors.diff_del, "#f38ba8");
         assert_eq!(colors.diff_normal, "#bac2de");
+        assert_eq!(colors.cc_type_feat, "#89b4fa");
+        assert_eq!(colors.cc_type_fix, "#f38ba8");
+        assert_eq!(colors.cc_type_docs, "#cba6f7");
+        assert_eq!(colors.cc_type_style, "#f5c2e7");
+        assert_eq!(colors.cc_type_refactor, "#fab387");
+        assert_eq!(colors.cc_type_perf, "#f9e2af");
+        assert_eq!(colors.cc_type_test, "#94e2d5");
+        assert_eq!(colors.cc_type_chore, "#6c7086");
     }
 
     #[test]
@@ -209,6 +250,14 @@ mod tests {
             diff_add: None,
             diff_del: None,
             diff_normal: None,
+            cc_type_feat: None,
+            cc_type_fix: None,
+            cc_type_docs: None,
+            cc_type_style: None,
+            cc_type_refactor: None,
+            cc_type_perf: None,
+            cc_type_test: None,
+            cc_type_chore: None,
         };
         let merged = merge_colors(default_colors(), Some(theme));
         assert_eq!(merged.cursor_bg, "#ff0000");
