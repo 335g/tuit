@@ -27,6 +27,15 @@ pub fn open_repo() -> Result<gix::Repository> {
     gix::open(".").context("tuit は git リポジトリの中で実行してください。")
 }
 
+/// Return the current branch name (e.g. `"main"`), or `"HEAD"` if detached.
+pub fn current_branch(repo: &gix::Repository) -> Result<String> {
+    let head = repo.head().context("No HEAD reference found")?;
+    Ok(match head.referent_name() {
+        Some(name) => name.shorten().to_string(),
+        None => "HEAD".to_string(),
+    })
+}
+
 /// Return the hex string of the HEAD commit OID from an already-opened repository.
 pub fn current_head_oid(repo: &gix::Repository) -> Result<String> {
     let mut head = repo.head().context("No HEAD reference found")?;
