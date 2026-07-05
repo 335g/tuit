@@ -9,6 +9,33 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::app::{AlertKind, App, Screen};
 
+// ── Conventional commit helpers ─────────────────────────────────────
+
+/// Parse a conventional commit subject.
+/// Returns `(type, scope, breaking, description)` or `None`.
+fn parse_cc<'a>(message: &'a str) -> Option<(&'a str, Option<&'a str>, bool, &'a str)> {
+    let colon = message.find(':')?;
+    let prefix = message[..colon].trim_end();
+    let desc = message[colon + 1..].trim_start();
+
+    let breaking = prefix.ends_with('!');
+    let clean = if breaking { &prefix[..prefix.len() - 1] } else { prefix };
+
+    if let Some(open) = clean.find('(') {
+        let close = clean.rfind(')')?;
+        if close > open {
+            let r#type = clean[..open].trim();
+            let scope = clean[open + 1..close].trim();
+            if !r#type.is_empty() {
+                return Some((r#type, Some(scope), breaking, desc));
+            }
+        }
+    }
+
+    let r#type = clean.trim();
+    if r#type.is_empty() { None } else { Some((r#type, None, breaking, desc)) }
+}
+
 /// Convert a hex colour string (e.g. "#89b4fa") to a ratatui Color.
 fn hex_color(hex: &str) -> Color {
     let hex = hex.trim_start_matches('#');
@@ -101,25 +128,50 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
         .enumerate()
         .map(|(i, commit)| {
             let is_selected = i == app.selected_index;
-
             let cursor = if is_selected { "❯" } else { " " };
-
-            //   ≥ 140 → show hash, otherwise hide it
-            //   user.name is never shown in the commit list.
             let w = list_area.width as usize;
             let show_hash = w >= 140;
-            let reserved = if show_hash { 22 } else { 13 };
-            let max_msg_width = w.saturating_sub(reserved).max(5);
-            let msg = if commit.message.len() > max_msg_width {
-                let mut s: String = commit
-                    .message
-                    .chars()
-                    .take(max_msg_width.saturating_sub(1))
-                    .collect();
-                s.push('.');
-                s
-            } else {
-                commit.message.clone()
+            let hash_width = if show_hash { 9usize } else { 0 };
+
+            // Parse conventional commit prefix.
+            let cc = parse_cc(&commit.message);
+            // Width occupied by type + scope columns (0 when not conventional).
+            let cc_prefix_width = if cc.is_some() { 9 + 14 } else { 0 };
+
+            // Non-description reserved width:
+            //   cursor(2) + hash(9) + cc_prefix + date(11)
+            let reserved = 2 + hash_width + cc_prefix_width + 11;
+            let max_desc_width = w.saturating_sub(reserved).max(5);
+
+            // Resolve display description (truncated to fit).
+            let (display_desc, cc_type, cc_scope, cc_breaking) = match cc {
+                Some((r#type, scope, breaking, desc)) => {
+                    let display = if desc.len() > max_desc_width {
+                        let mut s: String = desc
+                            .chars()
+                            .take(max_desc_width.saturating_sub(1))
+                            .collect();
+                        s.push('.');
+                        s
+                    } else {
+                        desc.to_string()
+                    };
+                    (display, Some(r#type.to_string()), scope.map(String::from), breaking)
+                }
+                None => {
+                    let display = if commit.message.len() > max_desc_width {
+                        let mut s: String = commit
+                            .message
+                            .chars()
+                            .take(max_desc_width.saturating_sub(1))
+                            .collect();
+                        s.push('.');
+                        s
+                    } else {
+                        commit.message.clone()
+                    };
+                    (display, None, None, false)
+                }
             };
 
             // Date field (up to 10 chars)
@@ -131,6 +183,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                 commit.date.clone()
             };
 
+            // ── Build row spans ────────────────────────────────────
             if is_selected {
                 let bg = if grayed_out {
                     Color::Gray
@@ -149,7 +202,24 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                 if show_hash {
                     spans.push(Span::styled(format!(" {} ", commit.hash), base));
                 }
-                spans.push(Span::styled(format!(" {} ", msg), base));
+                // Conventional-commit prefix
+                if let Some(r#type) = &cc_type {
+                    spans.push(Span::styled(
+                        format!("{:<9}", r#type),
+                        base.add_modifier(Modifier::BOLD),
+                    ));
+                    match &cc_scope {
+                        Some(s) => spans.push(Span::styled(format!("{:<14}", s), base)),
+                        None => spans.push(Span::styled(format!("{:<14}", ""), base)),
+                    }
+                    if cc_breaking {
+                        spans.push(Span::styled(
+                            "!",
+                            base.fg(Color::Red),
+                        ));
+                    }
+                }
+                spans.push(Span::styled(format!(" {} ", display_desc), base));
                 spans.push(Span::styled(format!(" {}", date_str), base));
                 Line::from(spans)
             } else {
@@ -162,8 +232,35 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                         if grayed_out { muted_fg } else { fg(&colors.hash) },
                     ));
                 }
+                // Conventional-commit prefix
+                if let Some(r#type) = &cc_type {
+                    spans.push(Span::styled(
+                        format!("{:<9}", r#type),
+                        if grayed_out {
+                            muted_fg
+                        } else {
+                            fg(&colors.hash).add_modifier(Modifier::BOLD)
+                        },
+                    ));
+                    match &cc_scope {
+                        Some(s) => spans.push(Span::styled(
+                            format!("{:<14}", s),
+                            if grayed_out { muted_fg } else { Style::default().fg(Color::DarkGray) },
+                        )),
+                        None => spans.push(Span::styled(
+                            format!("{:<14}", ""),
+                            Style::default(),
+                        )),
+                    }
+                    if cc_breaking {
+                        spans.push(Span::styled(
+                            "!",
+                            if grayed_out { muted_fg } else { fg(&colors.diff_del) },
+                        ));
+                    }
+                }
                 spans.push(Span::styled(
-                    format!(" {} ", msg),
+                    format!(" {} ", display_desc),
                     if grayed_out { muted_fg } else { fg(&colors.message) },
                 ));
                 spans.push(Span::styled(
