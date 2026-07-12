@@ -1,10 +1,10 @@
 [package]
 name = "tuit-bin"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT"
 description = "A TUI git log viewer built with ratatui and gix (gitoxide)"
-repository = "https://github.com/yoshikikudo/tuit.git"
+repository = "https://github.com/335g/tuit.git"
 homepage = "https://github.com/yoshikikudo/tuit"
 documentation = "https://docs.rs/tuit-bin"
 readme = "README.md"
