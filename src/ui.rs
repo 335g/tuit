@@ -311,7 +311,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     frame.render_widget(list, layout[1]);
 
     // --- Footer ---
-    let footer_text = " ^/k up | v/j down | Ctrl+f/b pg | Enter detail | q quit ";
+    let footer_text = " ^/k up | v/j down | Ctrl+f/b pg | r reload | Enter detail | q quit ";
     let footer = Paragraph::new(Line::from(Span::styled(
         footer_text,
         Style::default().fg(Color::DarkGray),
@@ -560,6 +560,7 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
                 ("Ctrl+f", "Page down"),
                 ("Ctrl+b", "Page up"),
                 ("Enter", "Show commit details"),
+                ("r", "Reload from current branch"),
                 ("q", "Quit tuit"),
             ],
         ),
@@ -570,6 +571,7 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
                 ("v / j", "Scroll down"),
                 ("Ctrl+f", "Scroll down one page"),
                 ("Ctrl+b", "Scroll up one page"),
+                ("r", "Reload from current branch"),
                 ("Esc", "Close detail view"),
             ],
         ),
