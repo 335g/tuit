@@ -172,9 +172,10 @@ impl App {
             }
         };
 
-        // 4. First poll after startup: just record HEAD, no change detection.
+        // 4. First poll after startup: just record HEAD + branch, no change detection.
         if self.current_head_oid.is_none() {
             self.current_head_oid = Some(new_head_oid.clone());
+            self.current_branch = git::current_branch(&repo).unwrap_or_else(|_| "?".to_string());
             self.replace_commits(new_commits);
             return;
         }
@@ -188,6 +189,7 @@ impl App {
             let old_short = old_head.as_ref().map(|o| &o[..7.min(o.len())]).unwrap_or("?");
             let new_short = new_head_oid[..7.min(new_head_oid.len())].to_string();
             self.current_head_oid = Some(new_head_oid);
+            self.current_branch = git::current_branch(&repo).unwrap_or_else(|_| "?".to_string());
             self.set_notification(format!("HEAD moved: {} → {}", old_short, new_short));
 
             // Close Detail if it was open
@@ -391,6 +393,53 @@ impl App {
     /// Set the quit flag.
     pub fn quit(&mut self) {
         self.should_quit = true;
+    }
+
+    /// Reload the commit list from the current branch.
+    ///
+    /// Re-opens the repository, re-fetches the branch name and commits,
+    /// closes the detail view, and resets the selection to the top.
+    pub fn reload(&mut self) {
+        let repo = match git::open_repo() {
+            Ok(r) => r,
+            Err(e) => {
+                self.screen = Screen::Error(e.to_string());
+                self.polling_stopped = true;
+                return;
+            }
+        };
+
+        // Update branch name.
+        self.current_branch = git::current_branch(&repo).unwrap_or_else(|_| "?".to_string());
+
+        // Update HEAD OID.
+        self.current_head_oid = git::current_head_oid(&repo).ok();
+
+        // Reload commits.
+        match git::load_commits_from(&repo) {
+            Ok(commits) => {
+                self.commits = commits;
+                if self.commits.is_empty() {
+                    self.screen = Screen::Error(
+                        "このリポジトリにはまだコミットがありません。".into(),
+                    );
+                } else {
+                    self.screen = Screen::List;
+                }
+            }
+            Err(e) => {
+                self.screen = Screen::Error(e.to_string());
+                self.polling_stopped = true;
+                return;
+            }
+        }
+
+        // Reset selection and scroll state.
+        self.selected_index = 0;
+        self.list_scroll.set(0);
+        self.selected_commit = None;
+        self.detail_scroll.set(0);
+        self.detail_content_height.set(0);
     }
 
     /// Dismiss the error screen (equivalent to quitting).
