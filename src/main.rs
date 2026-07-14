@@ -172,6 +172,12 @@ pub fn handle_input(app: &mut App, key: Key) {
         return;
     }
 
+    // Global: r reloads commit list from the current branch.
+    if key == Key::Char('r') {
+        app.reload();
+        return;
+    }
+
     match &app.screen {
         Screen::List => match key {
             Key::Up | Key::Char('k') => app.navigate_up(),
@@ -499,6 +505,117 @@ mod e2e_tests {
                 "Commit subject {i} leaked through popup:\n{content}",
             );
         }
+    }
+
+    #[test]
+    fn reload_detects_branch_switch() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-reload-branch");
+        init_repo(&tmp, 2);
+
+        // Create and switch to a second branch with one more commit.
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "checkout", "-b", "feature"])
+            .status()
+            .unwrap();
+        let file = tmp.join("feature.txt");
+        std::fs::write(&file, "feature content").unwrap();
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "add", &file.to_string_lossy()])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args([
+                "-C",
+                &tmp.to_string_lossy(),
+                "commit",
+                "-m",
+                "Commit subject 2 (feature)",
+            ])
+            .env("GIT_AUTHOR_NAME", "Test User")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "Test User")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com")
+            .status()
+            .unwrap();
+
+        // Switch back to main (2 commits).
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "checkout", "main"])
+            .status()
+            .unwrap();
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg);
+        app.load_commits();
+
+        // Initial state: on main with 2 commits
+        assert_eq!(app.current_branch, "main");
+        assert_eq!(app.commits.len(), 2);
+
+        // Switch to feature branch via CLI
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "checkout", "feature"])
+            .status()
+            .unwrap();
+
+        // Reload
+        app.reload();
+
+        // Now on feature with 3 commits
+        assert_eq!(app.current_branch, "feature");
+        assert_eq!(app.commits.len(), 3);
+        assert!(
+            app.commits[0].message.contains("Commit subject 2 (feature)"),
+            "Expected feature branch commit at top, got: {}",
+            app.commits[0].message
+        );
+        assert_eq!(app.selected_index, 0);
+        assert_eq!(app.screen, Screen::List);
+        assert!(app.selected_commit.is_none());
+
+        std::env::set_current_dir(prev_dir).unwrap();
+    }
+
+    #[test]
+    fn reload_detaches_detail_view() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-reload-detail");
+        init_repo(&tmp, 3);
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg);
+        app.load_commits();
+        app.select_commit();
+
+        // Confirm we are in Detail
+        assert_eq!(app.screen, Screen::Detail);
+        assert!(app.selected_commit.is_some());
+        assert!(app.selected_index == 0);
+
+        // Reload
+        app.reload();
+
+        // Should be back to List with selection reset
+        assert_eq!(app.screen, Screen::List);
+        assert!(app.selected_commit.is_none());
+        assert_eq!(app.selected_index, 0);
+
+        std::env::set_current_dir(prev_dir).unwrap();
     }
 
     #[test]
