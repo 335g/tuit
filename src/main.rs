@@ -585,6 +585,124 @@ mod e2e_tests {
     }
 
     #[test]
+    fn reload_via_key_event_updates_branch_in_handle_input() {
+        // Test that handle_input with Key::Char('r') correctly triggers reload.
+        let tmp = std::env::temp_dir().join("tuit-e2e-reload-key-event");
+        init_repo(&tmp, 2);
+
+        // Create feature branch with one extra commit.
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "checkout", "-b", "feature"])
+            .status()
+            .unwrap();
+        let file = tmp.join("f.txt");
+        std::fs::write(&file, "f").unwrap();
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "add", &file.to_string_lossy()])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "commit", "-m", "Feature commit"])
+            .env("GIT_AUTHOR_NAME", "Test User")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "Test User")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com")
+            .status()
+            .unwrap();
+
+        // Switch back to main.
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "checkout", "main"])
+            .status()
+            .unwrap();
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg);
+        app.load_commits();
+
+        assert_eq!(app.current_branch, "main");
+        assert_eq!(app.commits.len(), 2);
+
+        // Switch to feature via CLI, then simulate pressing 'r'.
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "checkout", "feature"])
+            .status()
+            .unwrap();
+
+        handle_input(&mut app, Key::Char('r'));
+
+        assert_eq!(
+            app.current_branch, "feature",
+            "branch name should update after reload"
+        );
+        assert_eq!(
+            app.commits.len(),
+            3,
+            "commit count should reflect feature branch"
+        );
+        assert!(
+            app.commits[0].message.contains("Feature commit"),
+            "top commit should be the feature branch commit"
+        );
+        assert_eq!(app.screen, Screen::List);
+        assert_eq!(app.selected_index, 0);
+
+        std::env::set_current_dir(prev_dir).unwrap();
+    }
+
+    #[test]
+    fn reload_via_run_app_r_key() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-run-app-r");
+        init_repo(&tmp, 3);
+
+        // Create a feature branch with one commit, switch back to main.
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "checkout", "-b", "feature"])
+            .status()
+            .unwrap();
+        let file = tmp.join("ft.txt");
+        std::fs::write(&file, "ft").unwrap();
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "add", &file.to_string_lossy()])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "commit", "-m", "Only on feature"])
+            .env("GIT_AUTHOR_NAME", "Test User")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "Test User")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com")
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "checkout", "main"])
+            .status()
+            .unwrap();
+
+        // Run with just 'r' then 'q' — at startup we're on main (3 commits).
+        // The 'r' reloads from the same branch, so no visible change.
+        // Test that the app doesn't crash and renders something.
+        let backend = run_with_events(&tmp, vec![Key::Char('r'), Key::Char('q')]);
+        let content = buf_to_string(backend.buffer());
+        assert!(
+            content.contains("on main"),
+            "Expected 'on main' in header, got:\n{content}"
+        );
+        assert!(
+            content.contains("Commit subject 0"),
+            "Expected commit 0 in list after reload, got:\n{content}"
+        );
+    }
+
+    #[test]
     fn reload_detaches_detail_view() {
         let tmp = std::env::temp_dir().join("tuit-e2e-reload-detail");
         init_repo(&tmp, 3);
