@@ -37,14 +37,8 @@ One of: Loading, List, Detail, Error, Alert. The Alert screen carries an AlertKi
 **AlertKind**:
 A discriminated union identifying the reason for a modal alert. Currently: `CommitDeleted { oid }`.
 
-**Notification**:
-A transient non-blocking message displayed in the footer. Carries a `message: String` and a `remaining_ticks: u16` countdown for auto-dismiss. Used for HEAD Change announcements only.
-
-**Notification Timeout**:
-The duration (in milliseconds) that a HEAD-change notification is displayed before automatically dismissing. Configurable; defaults to 3000 ms.
-
 **Toast**:
-A transient non-blocking popup displayed in the bottom-right corner of the screen. Carries a `message: String` and an expiration time. Used for general user-facing announcements (e.g. autocommit notifications). Distinct from the footer `Notification`.
+A transient non-blocking popup displayed in the bottom-right corner of the screen. Carries a `message: String` and an expiration time. Used for user-facing announcements such as HEAD Change alerts, copy confirmations, and future autocommit notifications.
 
 **Toast Timeout**:
 The duration (in milliseconds) that a Toast is displayed before automatically dismissing. Configurable; defaults to 3000 ms.
