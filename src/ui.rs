@@ -111,11 +111,6 @@ pub fn render(frame: &mut Frame, app: &App) {
         }
     }
 
-    // Transient footer notification (HEAD-change announcement).
-    if app.notification.is_some() {
-        render_notification(frame, app);
-    }
-
     // Transient bottom-right toast popup.
     if app.toast.is_some() {
         render_toast(frame, app);
@@ -794,31 +789,6 @@ pub fn render_toast(frame: &mut Frame, app: &App) {
     .wrap(Wrap { trim: true })
     .style(Style::default().bg(bg_color));
     frame.render_widget(text, inner);
-}
-
-/// Render a transient notification in the footer area.
-pub fn render_notification(frame: &mut Frame, app: &App) {
-    let colors = &app.colors;
-    let area = frame.area();
-    let notif = match &app.notification {
-        Some(n) => n,
-        None => return,
-    };
-
-    // Notification bar at the very bottom of the screen
-    let bar = Rect {
-        x: 0,
-        y: area.height.saturating_sub(1),
-        width: area.width,
-        height: 1,
-    };
-
-    let bg_color = hex_color(&colors.detail_border);
-    let notice = Paragraph::new(Line::from(Span::styled(
-        format!(" {} ", notif.message),
-        Style::default().fg(Color::Black).bg(bg_color),
-    )));
-    frame.render_widget(notice, bar);
 }
 
 /// Render the error screen.

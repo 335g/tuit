@@ -26,13 +26,6 @@ pub enum AlertKind {
     CommitDeleted { oid: String },
 }
 
-/// A transient non-blocking notification displayed in the footer.
-#[derive(Clone, Debug)]
-pub struct Notification {
-    pub message: String,
-    pub expires_at: Instant,
-}
-
 /// A transient non-blocking popup displayed in the bottom-right corner.
 #[derive(Clone, Debug)]
 pub struct Toast {
@@ -60,8 +53,6 @@ pub struct App {
     pub current_branch: String,
 
     // ── Live-sync state ──────────────────────────────────────────
-    /// Transient footer notification (HEAD-move announcement).
-    pub notification: Option<Notification>,
     /// Transient bottom-right popup notification (general announcements).
     pub toast: Option<Toast>,
     /// Once true, the polling loop stops permanently (fatal repo error).
@@ -70,8 +61,6 @@ pub struct App {
     pub current_head_oid: Option<String>,
     /// Polling interval in milliseconds.
     pub poll_interval_ms: u64,
-    /// How long a notification stays visible before auto-dismiss (ms).
-    pub notification_timeout_ms: u64,
     /// How long a toast stays visible before auto-dismiss (ms).
     pub toast_timeout_ms: u64,
     /// Timestamp of the last poll (for throttling).
@@ -99,12 +88,10 @@ impl App {
             detail_content_height: Cell::new(0),
             current_branch: branch,
             show_help: false,
-            notification: None,
             toast: None,
             polling_stopped: false,
             current_head_oid: None,
             poll_interval_ms: config.poll_interval_ms,
-            notification_timeout_ms: config.notification_timeout_ms,
             toast_timeout_ms: config.toast_timeout_ms,
             // Initialise to the past so the first poll always runs.
             last_poll_time: Instant::now() - Duration::from_millis(config.poll_interval_ms + 1),
@@ -140,7 +127,6 @@ impl App {
     /// 6. Replace commit list while OID-tracking the selection.
     pub fn poll(&mut self) {
         if self.polling_stopped {
-            self.tick_notification();
             self.tick_toast();
             return;
         }
@@ -149,12 +135,10 @@ impl App {
 
         // Throttle: don't poll more often than the configured interval.
         if now - self.last_poll_time < Duration::from_millis(self.poll_interval_ms) {
-            self.tick_notification();
             self.tick_toast();
             return;
         }
         self.last_poll_time = now;
-        self.tick_notification();
         self.tick_toast();
 
         // 1. Open repository
@@ -200,7 +184,7 @@ impl App {
         let head_changed = old_head.as_ref() != Some(&new_head_oid);
 
         if head_changed {
-            // Build notification BEFORE moving new_head_oid.
+            // Build toast BEFORE moving new_head_oid.
             let old_short = old_head
                 .as_ref()
                 .map(|o| &o[..7.min(o.len())])
@@ -208,7 +192,7 @@ impl App {
             let new_short = new_head_oid[..7.min(new_head_oid.len())].to_string();
             self.current_head_oid = Some(new_head_oid);
             self.current_branch = git::current_branch(&repo).unwrap_or_else(|_| "?".to_string());
-            self.set_notification(format!("HEAD moved: {} → {}", old_short, new_short));
+            self.set_toast(format!("HEAD moved: {} → {}", old_short, new_short));
 
             // Close Detail if it was open
             if matches!(self.screen, Screen::Detail) {
@@ -246,24 +230,6 @@ impl App {
     }
 
     // ── Notification helpers ────────────────────────────────────
-
-    /// Create or overwrite the footer notification with a timeout.
-    pub fn set_notification(&mut self, message: String) {
-        let timeout_ms = self.notification_timeout_ms.max(100);
-        self.notification = Some(Notification {
-            message,
-            expires_at: Instant::now() + Duration::from_millis(timeout_ms),
-        });
-    }
-
-    /// Clear expired notification based on real time.
-    fn tick_notification(&mut self) {
-        if let Some(ref notif) = self.notification {
-            if Instant::now() >= notif.expires_at {
-                self.notification = None;
-            }
-        }
-    }
 
     /// Create or overwrite the bottom-right toast with a timeout.
     pub fn set_toast(&mut self, message: String) {

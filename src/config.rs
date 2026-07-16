@@ -38,7 +38,6 @@ pub struct Config {
     pub theme: String,
     pub colors: Colors,
     pub poll_interval_ms: u64,
-    pub notification_timeout_ms: u64,
     pub toast_timeout_ms: u64,
 }
 
@@ -47,7 +46,6 @@ pub struct Config {
 struct ConfigFile {
     theme: Option<String>,
     poll_interval_ms: Option<u64>,
-    notification_timeout_ms: Option<u64>,
     toast_timeout_ms: Option<u64>,
 }
 
@@ -134,21 +132,19 @@ pub fn load() -> Result<Config> {
     let cfg_path = cfg_dir.join("config.toml");
 
     // 1. Read optional config file
-    let (theme_name, poll_interval_ms, notification_timeout_ms, toast_timeout_ms) =
-        if cfg_path.exists() {
-            let content = fs::read_to_string(&cfg_path)
-                .with_context(|| format!("Failed to read config file: {}", cfg_path.display()))?;
-            let parsed: ConfigFile = toml::from_str(&content)
-                .with_context(|| format!("Failed to parse config file: {}", cfg_path.display()))?;
-            (
-                parsed.theme.unwrap_or_else(|| "default".into()),
-                parsed.poll_interval_ms.unwrap_or(2000),
-                parsed.notification_timeout_ms.unwrap_or(3000),
-                parsed.toast_timeout_ms.unwrap_or(3000),
-            )
-        } else {
-            ("default".into(), 2000, 3000, 3000)
-        };
+    let (theme_name, poll_interval_ms, toast_timeout_ms) = if cfg_path.exists() {
+        let content = fs::read_to_string(&cfg_path)
+            .with_context(|| format!("Failed to read config file: {}", cfg_path.display()))?;
+        let parsed: ConfigFile = toml::from_str(&content)
+            .with_context(|| format!("Failed to parse config file: {}", cfg_path.display()))?;
+        (
+            parsed.theme.unwrap_or_else(|| "default".into()),
+            parsed.poll_interval_ms.unwrap_or(2000),
+            parsed.toast_timeout_ms.unwrap_or(3000),
+        )
+    } else {
+        ("default".into(), 2000, 3000)
+    };
 
     // 2. Load theme file (optional)
     let theme_path = cfg_dir.join("themes").join(format!("{}.toml", theme_name));
@@ -169,7 +165,6 @@ pub fn load() -> Result<Config> {
         theme: theme_name,
         colors,
         poll_interval_ms,
-        notification_timeout_ms,
         toast_timeout_ms,
     })
 }
