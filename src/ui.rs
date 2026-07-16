@@ -142,8 +142,11 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     let padding_width = header_width.saturating_sub(branch_width + version_width);
 
     let header_line = Line::from(vec![
-        Span::styled(branch_text, Style::default().bold()),
-        Span::styled(" ".repeat(padding_width), Style::default()),
+        Span::styled(format!(" {}", branch_text), Style::default().bold()),
+        Span::styled(
+            " ".repeat(padding_width.saturating_sub(1)),
+            Style::default(),
+        ),
         Span::styled(version_text, Style::default().fg(Color::DarkGray)),
     ]);
     let header = Paragraph::new(header_line);
@@ -346,8 +349,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     frame.render_widget(list, layout[1]);
 
     // --- Footer ---
-    let footer_text =
-        " ^/k up | v/j down | Ctrl+f/b pg | c copy | r reload | Enter detail | q quit ";
+    let footer_text = " c copy | r reload | Enter detail | q quit ";
     let footer = Paragraph::new(Line::from(Span::styled(
         footer_text,
         Style::default().fg(Color::DarkGray),
