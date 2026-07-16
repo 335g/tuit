@@ -254,15 +254,19 @@ pub fn handle_input(app: &mut App, key: Key) {
 }
 
 /// Copy the currently focused commit's full OID to the system clipboard.
-/// Fails silently if the clipboard is unavailable (headless environment, etc.).
-fn copy_commit_hash(app: &App) {
+/// Shows a Toast on success; fails silently if the clipboard is unavailable
+/// (headless environment, etc.).
+fn copy_commit_hash(app: &mut App) {
     let oid = match app.current_commit_oid() {
         Some(o) => o,
         None => return,
     };
 
     if let Ok(mut clipboard) = arboard::Clipboard::new() {
-        let _ = clipboard.set_text(oid);
+        if clipboard.set_text(oid.clone()).is_ok() {
+            let short = oid.chars().take(7).collect::<String>();
+            app.set_toast(format!("Copied {} to clipboard", short));
+        }
     }
 }
 
