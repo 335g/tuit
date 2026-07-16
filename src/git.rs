@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use anyhow::{Context, Result};
 use gix::diff::Options;
 use gix::revision::walk::Sorting;
@@ -22,9 +24,14 @@ pub struct Commit {
     pub diff: String,
 }
 
-/// Open the current directory as a git repository.
-pub fn open_repo() -> Result<gix::Repository> {
-    gix::open(".").context("tuit は git リポジトリの中で実行してください。")
+/// Open the given directory as a git repository.
+pub fn open_repo(path: &Path) -> Result<gix::Repository> {
+    gix::open(path).with_context(|| {
+        format!(
+            "tuit は git リポジトリの中で実行してください: {}",
+            path.display()
+        )
+    })
 }
 
 /// Return the current branch name (e.g. `"main"`), or `"HEAD"` if detached.
@@ -56,8 +63,8 @@ pub fn object_exists(repo: &gix::Repository, oid_hex: &str) -> Result<bool> {
 }
 
 /// Load all commits reachable from HEAD (newest first), opening a fresh repository.
-pub fn load_commits() -> Result<Vec<Commit>> {
-    let repo = open_repo()?;
+pub fn load_commits(path: &Path) -> Result<Vec<Commit>> {
+    let repo = open_repo(path)?;
     load_commits_from(&repo)
 }
 
@@ -114,8 +121,8 @@ pub fn load_commits_from(repo: &gix::Repository) -> Result<Vec<Commit>> {
 /// Load the full commit body and diff for a commit identified by its full OID hex string.
 ///
 /// Returns `(body, diff_text)`.
-pub fn load_diff(oid_hex: &str) -> Result<(String, String)> {
-    let repo = open_repo()?;
+pub fn load_diff(path: &Path, oid_hex: &str) -> Result<(String, String)> {
+    let repo = open_repo(path)?;
 
     let oid: gix::hash::ObjectId = oid_hex.parse().context("Invalid OID format")?;
 
