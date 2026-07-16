@@ -33,6 +33,13 @@ pub struct Notification {
     pub expires_at: Instant,
 }
 
+/// A transient non-blocking popup displayed in the bottom-right corner.
+#[derive(Clone, Debug)]
+pub struct Toast {
+    pub message: String,
+    pub expires_at: Instant,
+}
+
 /// Central application state.
 pub struct App {
     pub screen: Screen,
@@ -55,6 +62,8 @@ pub struct App {
     // ── Live-sync state ──────────────────────────────────────────
     /// Transient footer notification (HEAD-move announcement).
     pub notification: Option<Notification>,
+    /// Transient bottom-right popup notification (general announcements).
+    pub toast: Option<Toast>,
     /// Once true, the polling loop stops permanently (fatal repo error).
     pub polling_stopped: bool,
     /// The HEAD commit OID from the last successful poll (used for change detection).
@@ -63,6 +72,8 @@ pub struct App {
     pub poll_interval_ms: u64,
     /// How long a notification stays visible before auto-dismiss (ms).
     pub notification_timeout_ms: u64,
+    /// How long a toast stays visible before auto-dismiss (ms).
+    pub toast_timeout_ms: u64,
     /// Timestamp of the last poll (for throttling).
     pub last_poll_time: Instant,
 }
@@ -89,13 +100,14 @@ impl App {
             current_branch: branch,
             show_help: false,
             notification: None,
+            toast: None,
             polling_stopped: false,
             current_head_oid: None,
             poll_interval_ms: config.poll_interval_ms,
             notification_timeout_ms: config.notification_timeout_ms,
+            toast_timeout_ms: config.toast_timeout_ms,
             // Initialise to the past so the first poll always runs.
-            last_poll_time: Instant::now()
-                - Duration::from_millis(config.poll_interval_ms + 1),
+            last_poll_time: Instant::now() - Duration::from_millis(config.poll_interval_ms + 1),
         }
     }
 
@@ -129,6 +141,7 @@ impl App {
     pub fn poll(&mut self) {
         if self.polling_stopped {
             self.tick_notification();
+            self.tick_toast();
             return;
         }
 
@@ -137,10 +150,12 @@ impl App {
         // Throttle: don't poll more often than the configured interval.
         if now - self.last_poll_time < Duration::from_millis(self.poll_interval_ms) {
             self.tick_notification();
+            self.tick_toast();
             return;
         }
         self.last_poll_time = now;
         self.tick_notification();
+        self.tick_toast();
 
         // 1. Open repository
         let repo = match git::open_repo() {
@@ -186,7 +201,10 @@ impl App {
 
         if head_changed {
             // Build notification BEFORE moving new_head_oid.
-            let old_short = old_head.as_ref().map(|o| &o[..7.min(o.len())]).unwrap_or("?");
+            let old_short = old_head
+                .as_ref()
+                .map(|o| &o[..7.min(o.len())])
+                .unwrap_or("?");
             let new_short = new_head_oid[..7.min(new_head_oid.len())].to_string();
             self.current_head_oid = Some(new_head_oid);
             self.current_branch = git::current_branch(&repo).unwrap_or_else(|_| "?".to_string());
@@ -216,8 +234,7 @@ impl App {
                         .map(|exists| !exists)
                         .unwrap_or(true);
                     if gone {
-                        self.screen =
-                            Screen::Alert(AlertKind::CommitDeleted { oid: oid.clone() });
+                        self.screen = Screen::Alert(AlertKind::CommitDeleted { oid: oid.clone() });
                         self.commits = new_commits;
                         return;
                     }
@@ -248,14 +265,39 @@ impl App {
         }
     }
 
+    /// Create or overwrite the bottom-right toast with a timeout.
+    pub fn set_toast(&mut self, message: String) {
+        let timeout_ms = self.toast_timeout_ms.max(1);
+        self.toast = Some(Toast {
+            message,
+            expires_at: Instant::now() + Duration::from_millis(timeout_ms),
+        });
+    }
+
+    /// Dismiss the current toast immediately.
+    pub fn dismiss_toast(&mut self) {
+        self.toast = None;
+    }
+
+    /// Show a sample toast for demonstration/debugging purposes.
+    pub fn show_sample_toast(&mut self) {
+        self.set_toast("Sample toast notification".to_string());
+    }
+
+    /// Clear expired toast based on real time.
+    fn tick_toast(&mut self) {
+        if let Some(ref toast) = self.toast {
+            if Instant::now() >= toast.expires_at {
+                self.toast = None;
+            }
+        }
+    }
+
     // ── Commit list management ───────────────────────────────────
 
     /// Replace the commit list while OID-tracking the current selection.
     fn replace_commits(&mut self, new_commits: Vec<Commit>) {
-        let target_oid = self
-            .commits
-            .get(self.selected_index)
-            .map(|c| c.oid.clone());
+        let target_oid = self.commits.get(self.selected_index).map(|c| c.oid.clone());
         self.commits = new_commits;
         self.selected_index = target_oid
             .and_then(|oid| self.commits.iter().position(|c| c.oid == oid))
@@ -397,12 +439,8 @@ impl App {
     /// other screen or when no commit is available.
     pub fn current_commit_oid(&self) -> Option<String> {
         match &self.screen {
-            Screen::List => {
-                self.commits.get(self.selected_index).map(|c| c.oid.clone())
-            }
-            Screen::Detail => {
-                self.selected_commit.as_ref().map(|c| c.oid.clone())
-            }
+            Screen::List => self.commits.get(self.selected_index).map(|c| c.oid.clone()),
+            Screen::Detail => self.selected_commit.as_ref().map(|c| c.oid.clone()),
             _ => None,
         }
     }
@@ -437,9 +475,8 @@ impl App {
             Ok(commits) => {
                 self.commits = commits;
                 if self.commits.is_empty() {
-                    self.screen = Screen::Error(
-                        "このリポジトリにはまだコミットがありません。".into(),
-                    );
+                    self.screen =
+                        Screen::Error("このリポジトリにはまだコミットがありません。".into());
                 } else {
                     self.screen = Screen::List;
                 }
