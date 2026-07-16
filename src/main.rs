@@ -5,7 +5,9 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use clap::Parser;
 use crossterm::ExecutableCommand;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, poll};
+use crossterm::event::{
+    self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind, poll,
+};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
@@ -14,7 +16,7 @@ use ratatui::backend::{Backend, CrosstermBackend};
 
 use crate::app::{App, Screen};
 
-/// Simplified key event for the application.
+/// Simplified input event for the application.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Key {
     Up,
@@ -25,6 +27,8 @@ pub enum Key {
     PageDown,
     Char(char),
     Ctrl(char),
+    /// Left mouse button click at the given terminal row.
+    MouseClick(u16),
 }
 
 mod app;
@@ -57,6 +61,7 @@ fn main() -> Result<()> {
 
     enable_raw_mode()?;
     io::stdout().execute(EnterAlternateScreen)?;
+    io::stdout().execute(event::EnableMouseCapture)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
 
     // Load config.
@@ -102,16 +107,17 @@ fn main() -> Result<()> {
 
     // Teardown.
     disable_raw_mode()?;
+    io::stdout().execute(event::DisableMouseCapture)?;
     io::stdout().execute(LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
     Ok(())
 }
 
-/// Read a single key event from crossterm.
+/// Read a single input event from crossterm.
 fn read_key() -> Result<Option<Key>> {
-    if let Event::Key(key) = event::read()? {
-        if key.kind == KeyEventKind::Press {
+    match event::read()? {
+        Event::Key(key) if key.kind == KeyEventKind::Press => {
             let k = match key.code {
                 KeyCode::Esc => Key::Esc,
                 KeyCode::Enter => Key::Enter,
@@ -123,10 +129,13 @@ fn read_key() -> Result<Option<Key>> {
                 KeyCode::Char(c) => Key::Char(c),
                 _ => return Ok(None),
             };
-            return Ok(Some(k));
+            Ok(Some(k))
         }
+        Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
+            Ok(Some(Key::MouseClick(mouse.row)))
+        }
+        _ => Ok(None),
     }
-    Ok(None)
 }
 
 /// Validate that `path` exists, is a directory, and is a git repository.
@@ -227,6 +236,7 @@ pub fn handle_input(app: &mut App, key: Key) {
             Key::Enter => app.select_commit(),
             Key::Char('c') => copy_commit_hash(app),
             Key::Char('q') => app.quit(),
+            Key::MouseClick(row) => select_commit_at_row(app, row),
             _ => {}
         },
         Screen::Detail => match key {
@@ -249,6 +259,22 @@ pub fn handle_input(app: &mut App, key: Key) {
         Screen::Loading => {
             // Ignore all input while loading.
         }
+    }
+}
+
+/// Select the commit visible at the given terminal row in the commit list.
+///
+/// The header occupies row 0; the list itself begins at row 1.  Clicks
+/// outside the list area are ignored.
+fn select_commit_at_row(app: &mut App, row: u16) {
+    if app.commits.is_empty() || row < 1 {
+        return;
+    }
+    let visible_row = (row as usize).saturating_sub(1);
+    let new_index = app.list_scroll.get() + visible_row;
+    let max_index = app.commits.len().saturating_sub(1);
+    if new_index <= max_index {
+        app.selected_index = new_index;
     }
 }
 
@@ -910,5 +936,56 @@ mod e2e_tests {
                 "Commit subject {i} missing in 30-col rendering:\n{content}",
             );
         }
+    }
+
+    #[test]
+    fn mouse_click_selects_commit_in_list() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-mouse-click");
+        init_repo(&tmp, 5);
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg, std::env::current_dir().unwrap());
+        app.load_commits();
+        assert_eq!(app.screen, Screen::List);
+        assert_eq!(app.commits.len(), 5);
+        assert_eq!(app.selected_index, 0);
+
+        // Click on the third visible row (header is row 0, list starts at row 1).
+        super::handle_input(&mut app, Key::MouseClick(3));
+        assert_eq!(
+            app.selected_index, 2,
+            "Click on row 3 should select index 2"
+        );
+
+        // Click on the first list row.
+        super::handle_input(&mut app, Key::MouseClick(1));
+        assert_eq!(
+            app.selected_index, 0,
+            "Click on row 1 should select index 0"
+        );
+
+        // Click on the header row is ignored.
+        super::handle_input(&mut app, Key::MouseClick(0));
+        assert_eq!(
+            app.selected_index, 0,
+            "Click on header row should not change selection"
+        );
+
+        // Click beyond the commit list is ignored.
+        super::handle_input(&mut app, Key::MouseClick(100));
+        assert_eq!(
+            app.selected_index, 0,
+            "Click beyond list should not change selection"
+        );
+
+        std::env::set_current_dir(prev_dir).unwrap();
     }
 }
