@@ -185,6 +185,7 @@ pub fn handle_input(app: &mut App, key: Key) {
             Key::Ctrl('f') | Key::PageDown => app.navigate_page_down(),
             Key::Ctrl('b') | Key::PageUp => app.navigate_page_up(),
             Key::Enter => app.select_commit(),
+            Key::Char('c') => copy_commit_hash(app),
             Key::Char('q') => app.quit(),
             _ => {}
         },
@@ -194,6 +195,7 @@ pub fn handle_input(app: &mut App, key: Key) {
             Key::Down | Key::Char('j') => app.scroll_detail_down(),
             Key::Ctrl('f') | Key::PageDown => app.scroll_detail_page_down(),
             Key::Ctrl('b') | Key::PageUp => app.scroll_detail_page_up(),
+            Key::Char('c') => copy_commit_hash(app),
             _ => {}
         },
         Screen::Error(_) => match key {
@@ -207,6 +209,19 @@ pub fn handle_input(app: &mut App, key: Key) {
         Screen::Loading => {
             // Ignore all input while loading.
         }
+    }
+}
+
+/// Copy the currently focused commit's full OID to the system clipboard.
+/// Fails silently if the clipboard is unavailable (headless environment, etc.).
+fn copy_commit_hash(app: &App) {
+    let oid = match app.current_commit_oid() {
+        Some(o) => o,
+        None => return,
+    };
+
+    if let Ok(mut clipboard) = arboard::Clipboard::new() {
+        let _ = clipboard.set_text(oid);
     }
 }
 
