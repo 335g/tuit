@@ -46,3 +46,4 @@ directories = "6.0"
 imara-diff = "0.1"
 unicode-width = "0.2"
 arboard = "3"
+clap = { version = "4", features = ["derive"] }
