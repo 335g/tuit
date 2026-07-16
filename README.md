@@ -44,6 +44,7 @@ tuit
 | `↑` / `k` | カーソルを上に移動 |
 | `↓` / `j` | カーソルを下に移動 |
 | `Enter` | 選択中のコミットの詳細を開く |
+| `n` | サンプル Toast 通知を表示 |
 | `q` | tuit を終了 |
 | `?` | ヘルプオーバーレイを開く |
 
@@ -75,6 +76,7 @@ tuit
 theme = "monokai"
 poll_interval_ms = 3000
 notification_timeout_ms = 5000
+toast_timeout_ms = 5000
 ```
 
 | 項目 | 説明 | デフォルト値 |
@@ -82,6 +84,7 @@ notification_timeout_ms = 5000
 | `theme` | 使用するテーマ名 (`default` または `themes/` 下のファイル名) | `"default"` |
 | `poll_interval_ms` | Git ポーリング間隔 (ミリ秒) | `2000` |
 | `notification_timeout_ms` | HEAD 移動通知の表示時間 (ミリ秒) | `3000` |
+| `toast_timeout_ms` | 右下 Toast 通知の表示時間 (ミリ秒) | `3000` |
 
 ### テーマ
 

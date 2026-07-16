@@ -43,6 +43,18 @@ A transient non-blocking message displayed in the footer. Carries a `message: St
 **Notification Timeout**:
 The duration (in milliseconds) that a HEAD-change notification is displayed before automatically dismissing. Configurable; defaults to 3000 ms.
 
+**Toast**:
+A transient non-blocking popup displayed in the bottom-right corner of the screen. Carries a `message: String` and an expiration time. Used for general user-facing announcements (e.g. autocommit notifications). Distinct from the footer `Notification`.
+
+**Toast Timeout**:
+The duration (in milliseconds) that a Toast is displayed before automatically dismissing. Configurable; defaults to 3000 ms.
+
+**Toast Dismissal**:
+The act of closing a Toast, either by waiting for its timeout to expire or by clicking the Toast area with the mouse.
+
+**Sample Toast**:
+A Toast triggered manually for demonstration or debugging purposes (e.g. by pressing a dedicated key).
+
 **Copy to Clipboard**:
 The action of copying a commit's full 40-character OID hex string to the system clipboard, triggered by pressing `c` in either the Commit List or the Commit Detail screen. Uses the system-native clipboard API via the `arboard` crate.
 _Avoid_: Short hash copy, abbreviated copy
