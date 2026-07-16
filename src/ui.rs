@@ -698,8 +698,8 @@ pub fn render_alert_overlay(frame: &mut Frame, app: &App, kind: &AlertKind) {
 
 /// Render a transient notification in the footer area.
 ///
-/// Fills the entire bottom row with the theme's accent colour and centres
-/// the message text.
+/// Fills the entire bottom row with the theme's accent colour and aligns
+/// the message text to the right.
 pub fn render_notification(frame: &mut Frame, app: &App) {
     let colors = &app.colors;
     let area = frame.area();
@@ -721,7 +721,7 @@ pub fn render_notification(frame: &mut Frame, app: &App) {
         format!(" {} ", notif.message),
         Style::default().fg(Color::Black).bg(bg_color),
     )))
-    .alignment(Alignment::Center);
+    .alignment(Alignment::Right);
     frame.render_widget(notice, bar);
 }
 
