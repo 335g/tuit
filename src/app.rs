@@ -1,4 +1,5 @@
 use std::cell::Cell;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crate::config::{self, Config};
@@ -65,13 +66,15 @@ pub struct App {
     pub notification_timeout_ms: u64,
     /// Timestamp of the last poll (for throttling).
     pub last_poll_time: Instant,
+    /// Filesystem path of the Git repository being viewed.
+    pub repo_path: PathBuf,
 }
 
 impl App {
     /// Create a new app in the Loading state.
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config, repo_path: PathBuf) -> Self {
         // Best-effort branch detection — fall back to "?" on failure.
-        let branch = git::open_repo()
+        let branch = git::open_repo(&repo_path)
             .and_then(|repo| git::current_branch(&repo))
             .unwrap_or_else(|_| "?".to_string());
 
@@ -95,13 +98,14 @@ impl App {
             notification_timeout_ms: config.notification_timeout_ms,
             // Initialise to the past so the first poll always runs.
             last_poll_time: Instant::now() - Duration::from_millis(config.poll_interval_ms + 1),
+            repo_path,
         }
     }
 
     /// Load commits from the git repository.
     /// Transitions to `List` on success, `Error` on failure.
     pub fn load_commits(&mut self) {
-        match git::load_commits() {
+        match git::load_commits(&self.repo_path) {
             Ok(commits) => {
                 self.commits = commits;
                 if self.commits.is_empty() {
@@ -142,7 +146,7 @@ impl App {
         self.tick_notification();
 
         // 1. Open repository
-        let repo = match git::open_repo() {
+        let repo = match git::open_repo(&self.repo_path) {
             Ok(r) => r,
             Err(e) => {
                 self.screen = Screen::Error(e.to_string());
@@ -312,7 +316,7 @@ impl App {
 
         self.detail_scroll.set(0);
 
-        match git::load_diff(&oid) {
+        match git::load_diff(&self.repo_path, &oid) {
             Ok((body, diff)) => {
                 let mut commit = selected.clone();
                 commit.body = body;
@@ -411,7 +415,7 @@ impl App {
     /// Re-opens the repository, re-fetches the branch name and commits,
     /// closes the detail view, and resets the selection to the top.
     pub fn reload(&mut self) {
-        let repo = match git::open_repo() {
+        let repo = match git::open_repo(&self.repo_path) {
             Ok(r) => r,
             Err(e) => {
                 self.screen = Screen::Error(e.to_string());
