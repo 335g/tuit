@@ -390,6 +390,23 @@ impl App {
         }
     }
 
+    /// Return the full OID of the currently focused commit, if any.
+    ///
+    /// Works in both `List` (selected commit in the list) and `Detail`
+    /// (the commit whose detail is being viewed). Returns `None` in any
+    /// other screen or when no commit is available.
+    pub fn current_commit_oid(&self) -> Option<String> {
+        match &self.screen {
+            Screen::List => {
+                self.commits.get(self.selected_index).map(|c| c.oid.clone())
+            }
+            Screen::Detail => {
+                self.selected_commit.as_ref().map(|c| c.oid.clone())
+            }
+            _ => None,
+        }
+    }
+
     /// Set the quit flag.
     pub fn quit(&mut self) {
         self.should_quit = true;
