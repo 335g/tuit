@@ -45,7 +45,6 @@ fn main() -> Result<()> {
         theme: "default".into(),
         colors: config::default_colors(),
         poll_interval_ms: 2000,
-        notification_timeout_ms: 3000,
         toast_timeout_ms: 3000,
     });
 
@@ -154,7 +153,6 @@ where
         theme: "default".into(),
         colors: config::default_colors(),
         poll_interval_ms: 2000,
-        notification_timeout_ms: 3000,
         toast_timeout_ms: 3000,
     });
     let config = cfg;
@@ -463,7 +461,6 @@ mod e2e_tests {
             theme: "default".into(),
             colors: config::default_colors(),
             poll_interval_ms: 2000,
-            notification_timeout_ms: 3000,
             toast_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
@@ -512,6 +509,65 @@ mod e2e_tests {
     }
 
     #[test]
+    fn poll_head_change_shows_toast() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-poll-head-toast");
+        init_repo(&tmp, 2);
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            toast_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg);
+        app.load_commits();
+
+        // First poll records the initial HEAD.
+        app.poll();
+        assert!(app.current_head_oid.is_some());
+        assert!(app.toast.is_none(), "No toast on initial HEAD recording");
+
+        // Add a new commit so HEAD changes.
+        let file = tmp.join("head-toast.txt");
+        std::fs::write(&file, "head toast content").unwrap();
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "add", &file.to_string_lossy()])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args([
+                "-C",
+                &tmp.to_string_lossy(),
+                "commit",
+                "--allow-empty",
+                "-m",
+                "Head change toast commit",
+            ])
+            .env("GIT_AUTHOR_NAME", "Test User")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "Test User")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com")
+            .status()
+            .unwrap();
+
+        // Force the next poll to run despite throttle.
+        app.last_poll_time = std::time::Instant::now() - std::time::Duration::from_millis(5000);
+        app.poll();
+
+        assert!(app.toast.is_some(), "Expected toast after HEAD change");
+        assert!(
+            app.toast.as_ref().unwrap().message.contains("HEAD moved"),
+            "Expected HEAD moved toast, got: {:?}",
+            app.toast
+        );
+
+        std::env::set_current_dir(prev_dir).unwrap();
+    }
+
+    #[test]
     fn poll_timestamps_update_in_detail() {
         let tmp = std::env::temp_dir().join("tuit-e2e-poll-detail-time");
         init_repo(&tmp, 1);
@@ -523,7 +579,6 @@ mod e2e_tests {
             theme: "default".into(),
             colors: config::default_colors(),
             poll_interval_ms: 2000,
-            notification_timeout_ms: 3000,
             toast_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
@@ -612,7 +667,6 @@ mod e2e_tests {
             theme: "default".into(),
             colors: config::default_colors(),
             poll_interval_ms: 2000,
-            notification_timeout_ms: 3000,
             toast_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
@@ -693,7 +747,6 @@ mod e2e_tests {
             theme: "default".into(),
             colors: config::default_colors(),
             poll_interval_ms: 2000,
-            notification_timeout_ms: 3000,
             toast_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
@@ -791,7 +844,6 @@ mod e2e_tests {
             theme: "default".into(),
             colors: config::default_colors(),
             poll_interval_ms: 2000,
-            notification_timeout_ms: 3000,
             toast_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
@@ -865,7 +917,6 @@ mod e2e_tests {
             theme: "default".into(),
             colors: config::default_colors(),
             poll_interval_ms: 2000,
-            notification_timeout_ms: 3000,
             toast_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
@@ -883,7 +934,6 @@ mod e2e_tests {
             theme: "default".into(),
             colors: config::default_colors(),
             poll_interval_ms: 2000,
-            notification_timeout_ms: 3000,
             toast_timeout_ms: 1,
         };
         let mut app = App::new(cfg);
