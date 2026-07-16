@@ -490,7 +490,7 @@ mod e2e_tests {
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
         };
-        let mut app = App::new(cfg, std::env::current_dir().unwrap());
+        let mut app = App::new(cfg, tmp.clone());
         app.load_commits();
 
         // Initial state: 2 commits
@@ -549,7 +549,7 @@ mod e2e_tests {
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
         };
-        let mut app = App::new(cfg, std::env::current_dir().unwrap());
+        let mut app = App::new(cfg, tmp.clone());
         app.load_commits();
 
         // First poll records the initial HEAD.
@@ -618,7 +618,7 @@ mod e2e_tests {
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
         };
-        let mut app = App::new(cfg, std::env::current_dir().unwrap());
+        let mut app = App::new(cfg, tmp.clone());
         app.load_commits();
         app.select_commit();
         assert_eq!(app.screen, Screen::Detail);
@@ -706,7 +706,7 @@ mod e2e_tests {
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
         };
-        let mut app = App::new(cfg, std::env::current_dir().unwrap());
+        let mut app = App::new(cfg, tmp.clone());
         app.load_commits();
 
         // Initial state: on main with 2 commits
@@ -786,7 +786,7 @@ mod e2e_tests {
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
         };
-        let mut app = App::new(cfg, std::env::current_dir().unwrap());
+        let mut app = App::new(cfg, tmp.clone());
         app.load_commits();
 
         assert_eq!(app.current_branch, "main");
@@ -887,7 +887,7 @@ mod e2e_tests {
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
         };
-        let mut app = App::new(cfg, std::env::current_dir().unwrap());
+        let mut app = App::new(cfg, tmp.clone());
         app.load_commits();
         app.select_commit();
 
@@ -952,7 +952,7 @@ mod e2e_tests {
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
         };
-        let mut app = App::new(cfg, std::env::current_dir().unwrap());
+        let mut app = App::new(cfg, tmp.clone());
         app.load_commits();
         assert_eq!(app.screen, Screen::List);
         assert_eq!(app.commits.len(), 5);
