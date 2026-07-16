@@ -1,7 +1,9 @@
 use std::io;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use clap::Parser;
 use crossterm::ExecutableCommand;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, poll};
 use crossterm::terminal::{
@@ -30,8 +32,29 @@ mod config;
 mod git;
 mod ui;
 
+/// Command-line arguments for tuit.
+#[derive(Parser)]
+#[command(name = "tuit", version)]
+struct Cli {
+    /// Path to the Git repository to open.
+    #[arg(short, long, value_name = "PATH")]
+    repo: Option<PathBuf>,
+}
+
 /// Main entry point – production mode.
 fn main() -> Result<()> {
+    let cli = Cli::parse();
+    let explicit_repo = cli.repo.is_some();
+    let repo_path = cli
+        .repo
+        .map(|p| p.canonicalize().unwrap_or(p))
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+
+    // Validate an explicitly supplied repository path before entering the TUI.
+    if explicit_repo {
+        validate_repo_path(&repo_path)?;
+    }
+
     enable_raw_mode()?;
     io::stdout().execute(EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
@@ -45,7 +68,7 @@ fn main() -> Result<()> {
     });
 
     // Initialise app and load commits.
-    let mut app = App::new(cfg);
+    let mut app = App::new(cfg, repo_path);
     app.load_commits();
 
     // Draw initial state.
@@ -106,11 +129,28 @@ fn read_key() -> Result<Option<Key>> {
     Ok(None)
 }
 
+/// Validate that `path` exists, is a directory, and is a git repository.
+fn validate_repo_path(path: &Path) -> Result<()> {
+    if !path.exists() {
+        anyhow::bail!("リポジトリパスが存在しません: {}", path.display());
+    }
+    if !path.is_dir() {
+        anyhow::bail!(
+            "リポジトリパスはディレクトリである必要があります: {}",
+            path.display()
+        );
+    }
+    git::open_repo(path)
+        .with_context(|| format!("無効な Git リポジトリです: {}", path.display()))?;
+    Ok(())
+}
+
 /// Generic application entry point that accepts any Backend and any key-event
 /// iterator.  Used by both `main()` (production) and tests (TestBackend).
 pub fn run_app<B: Backend>(
     terminal: &mut Terminal<B>,
     events: impl Iterator<Item = Key>,
+    repo_path: PathBuf,
 ) -> Result<()>
 where
     <B as Backend>::Error: Send + Sync + 'static,
@@ -125,7 +165,7 @@ where
     let config = cfg;
 
     // 2. Initialise app and load commits.
-    let mut app = App::new(config);
+    let mut app = App::new(config, repo_path);
     app.load_commits();
 
     // Draw initial state before waiting for input.
@@ -308,7 +348,7 @@ mod e2e_tests {
         // We can't easily override this in-process, but config::load() will
         // fall back to defaults when no files exist, which is fine.
 
-        let _ = super::run_app(&mut terminal, events.into_iter());
+        let _ = super::run_app(&mut terminal, events.into_iter(), repo_path.to_path_buf());
 
         // Restore working directory.
         std::env::set_current_dir(prev_dir).unwrap();
@@ -424,7 +464,7 @@ mod e2e_tests {
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
         };
-        let mut app = App::new(cfg);
+        let mut app = App::new(cfg, std::env::current_dir().unwrap());
         app.load_commits();
 
         // Initial state: 2 commits
@@ -483,7 +523,7 @@ mod e2e_tests {
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
         };
-        let mut app = App::new(cfg);
+        let mut app = App::new(cfg, std::env::current_dir().unwrap());
         app.load_commits();
 
         // First poll records the initial HEAD.
@@ -552,7 +592,7 @@ mod e2e_tests {
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
         };
-        let mut app = App::new(cfg);
+        let mut app = App::new(cfg, std::env::current_dir().unwrap());
         app.load_commits();
         app.select_commit();
         assert_eq!(app.screen, Screen::Detail);
@@ -640,7 +680,7 @@ mod e2e_tests {
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
         };
-        let mut app = App::new(cfg);
+        let mut app = App::new(cfg, std::env::current_dir().unwrap());
         app.load_commits();
 
         // Initial state: on main with 2 commits
@@ -720,7 +760,7 @@ mod e2e_tests {
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
         };
-        let mut app = App::new(cfg);
+        let mut app = App::new(cfg, std::env::current_dir().unwrap());
         app.load_commits();
 
         assert_eq!(app.current_branch, "main");
@@ -817,7 +857,7 @@ mod e2e_tests {
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
         };
-        let mut app = App::new(cfg);
+        let mut app = App::new(cfg, std::env::current_dir().unwrap());
         app.load_commits();
         app.select_commit();
 
@@ -848,7 +888,7 @@ mod e2e_tests {
 
         let backend = TestBackend::new(30, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        let _ = super::run_app(&mut terminal, vec![Key::Char('q')].into_iter());
+        let _ = super::run_app(&mut terminal, vec![Key::Char('q')].into_iter(), tmp.clone());
         let content = buf_to_string(terminal.backend().buffer());
 
         std::env::set_current_dir(prev_dir).unwrap();
