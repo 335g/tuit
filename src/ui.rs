@@ -349,7 +349,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     frame.render_widget(list, layout[1]);
 
     // --- Footer ---
-    let footer_text = " c copy | r reload | Enter detail | q quit ";
+    let footer_text = " c: copy hash | r: reload branch | Enter: detail | q: quit ";
     let footer = Paragraph::new(Line::from(Span::styled(
         footer_text,
         Style::default().fg(Color::DarkGray),
