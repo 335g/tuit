@@ -7,6 +7,19 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
+/// Right margin (in cells) between a Toast and the screen edge.
+const TOAST_MARGIN_RIGHT: u16 = 1;
+/// Bottom margin (in cells) between a Toast and the screen edge.
+const TOAST_MARGIN_BOTTOM: u16 = 1;
+/// Horizontal padding (in cells) inside a Toast.
+const TOAST_HPADDING: u16 = 2;
+/// Maximum height (in lines) of a Toast.
+const TOAST_MAX_HEIGHT: u16 = 5;
+/// Minimum width of a Toast as a fraction of the screen width.
+const TOAST_MIN_WIDTH_FRAC: f64 = 0.3;
+/// Maximum width of a Toast as a fraction of the screen width.
+const TOAST_MAX_WIDTH_FRAC: f64 = 0.8;
+
 use crate::app::{AlertKind, App, Screen};
 use crate::config::Colors;
 
@@ -20,7 +33,11 @@ fn parse_cc(message: &str) -> Option<(&str, Option<&str>, bool, &str)> {
     let desc = message[colon + 1..].trim_start();
 
     let breaking = prefix.ends_with('!');
-    let clean = if breaking { &prefix[..prefix.len() - 1] } else { prefix };
+    let clean = if breaking {
+        &prefix[..prefix.len() - 1]
+    } else {
+        prefix
+    };
 
     if let Some(open) = clean.find('(') {
         let close = clean.rfind(')')?;
@@ -34,7 +51,11 @@ fn parse_cc(message: &str) -> Option<(&str, Option<&str>, bool, &str)> {
     }
 
     let r#type = clean.trim();
-    if r#type.is_empty() { None } else { Some((r#type, None, breaking, desc)) }
+    if r#type.is_empty() {
+        None
+    } else {
+        Some((r#type, None, breaking, desc))
+    }
 }
 
 /// Return the configured hex colour for a conventional-commit type.
@@ -95,6 +116,11 @@ pub fn render(frame: &mut Frame, app: &App) {
         render_notification(frame, app);
     }
 
+    // Transient bottom-right toast popup.
+    if app.toast.is_some() {
+        render_toast(frame, app);
+    }
+
     // Help overlay on top of everything else.
     if app.show_help {
         render_help_overlay(frame, app);
@@ -152,7 +178,10 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     }
     // If selection drifted past the bottom edge, push scroll down.
     if viewport_height > 0 && app.selected_index >= scroll + viewport_height {
-        scroll = app.selected_index.saturating_add(1).saturating_sub(viewport_height);
+        scroll = app
+            .selected_index
+            .saturating_add(1)
+            .saturating_sub(viewport_height);
     }
 
     // Clamp: don't let scroll go past the last page of commits.
@@ -220,9 +249,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                     hex_color(&colors.cursor_fg)
                 };
                 let base = Style::default().bg(bg).fg(fg_color);
-                let mut spans = vec![
-                    Span::styled(format!(" {}", cursor), base),
-                ];
+                let mut spans = vec![Span::styled(format!(" {}", cursor), base)];
                 if show_hash {
                     spans.push(Span::styled(format!(" {} ", commit.hash), base));
                 }
@@ -236,7 +263,10 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                     };
                     spans.push(Span::styled(
                         cc_type.to_string(),
-                        Style::default().bg(bg).fg(type_color).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .bg(bg)
+                            .fg(type_color)
+                            .add_modifier(Modifier::BOLD),
                     ));
                     if let Some(scope) = cc_scope {
                         spans.push(Span::styled(format!("({})", scope), base));
@@ -244,7 +274,11 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                     if cc_breaking {
                         spans.push(Span::styled("!", base.fg(Color::Red)));
                     }
-                    let rest = if cc_desc.is_empty() { String::new() } else { format!(": {}", cc_desc) };
+                    let rest = if cc_desc.is_empty() {
+                        String::new()
+                    } else {
+                        format!(": {}", cc_desc)
+                    };
                     spans.push(Span::styled(rest, base));
                 } else {
                     spans.push(Span::styled(msg.clone(), base));
@@ -253,17 +287,23 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                 spans.push(Span::styled(format!(" {}", date_str), base));
                 Line::from(spans)
             } else {
-                let mut spans = vec![
-                    Span::styled(format!(" {}", cursor), muted_fg),
-                ];
+                let mut spans = vec![Span::styled(format!(" {}", cursor), muted_fg)];
                 if show_hash {
                     spans.push(Span::styled(
                         format!(" {} ", commit.hash),
-                        if grayed_out { muted_fg } else { fg(&colors.hash) },
+                        if grayed_out {
+                            muted_fg
+                        } else {
+                            fg(&colors.hash)
+                        },
                     ));
                 }
                 // Message with conventional-commit highlighting
-                let msg_style = if grayed_out { muted_fg } else { fg(&colors.message) };
+                let msg_style = if grayed_out {
+                    muted_fg
+                } else {
+                    fg(&colors.message)
+                };
                 spans.push(Span::styled(" ", msg_style));
                 if let Some((cc_type, cc_scope, cc_breaking, cc_desc)) = parse_cc(&msg) {
                     let type_style = if grayed_out {
@@ -288,7 +328,11 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                         };
                         spans.push(Span::styled("!", br_style));
                     }
-                    let rest = if cc_desc.is_empty() { String::new() } else { format!(": {}", cc_desc) };
+                    let rest = if cc_desc.is_empty() {
+                        String::new()
+                    } else {
+                        format!(": {}", cc_desc)
+                    };
                     spans.push(Span::styled(rest, msg_style));
                 } else {
                     spans.push(Span::styled(msg.clone(), msg_style));
@@ -296,7 +340,11 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                 spans.push(Span::styled(" ", msg_style));
                 spans.push(Span::styled(
                     format!(" {}", date_str),
-                    if grayed_out { muted_fg } else { fg(&colors.date) },
+                    if grayed_out {
+                        muted_fg
+                    } else {
+                        fg(&colors.date)
+                    },
                 ));
                 Line::from(spans)
             }
@@ -311,7 +359,8 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     frame.render_widget(list, layout[1]);
 
     // --- Footer ---
-    let footer_text = " ^/k up | v/j down | Ctrl+f/b pg | c copy | r reload | Enter detail | q quit ";
+    let footer_text =
+        " ^/k up | v/j down | Ctrl+f/b pg | c copy | r reload | Enter detail | q quit ";
     let footer = Paragraph::new(Line::from(Span::styled(
         footer_text,
         Style::default().fg(Color::DarkGray),
@@ -397,9 +446,9 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(msg_height),
-            Constraint::Length(1),  // separator ───────
-            Constraint::Min(1),     // diff (scrollable)
-            Constraint::Length(1),  // close hint
+            Constraint::Length(1), // separator ───────
+            Constraint::Min(1),    // diff (scrollable)
+            Constraint::Length(1), // close hint
         ])
         .split(inner);
 
@@ -418,10 +467,7 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     if body_count > 0 {
         msg_lines.push(Line::from(Span::styled(String::new(), value_style)));
         for line in body_lines.iter().take(8) {
-            msg_lines.push(Line::from(Span::styled(
-                line.to_string(),
-                value_style,
-            )));
+            msg_lines.push(Line::from(Span::styled(line.to_string(), value_style)));
         }
         if !showed_all_body {
             let dim_style = Style::default().fg(Color::DarkGray);
@@ -461,10 +507,7 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
             fg(&colors.diff_normal)
         };
         let display = if line.len() > diff_width {
-            let mut s: String = line
-                .chars()
-                .take(diff_width.saturating_sub(3))
-                .collect();
+            let mut s: String = line.chars().take(diff_width.saturating_sub(3)).collect();
             s.push_str(" ...");
             s
         } else {
@@ -562,6 +605,7 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
                 ("Enter", "Show commit details"),
                 ("c", "Copy commit hash to clipboard"),
                 ("r", "Reload from current branch"),
+                ("n", "Show sample toast"),
                 ("q", "Quit tuit"),
             ],
         ),
@@ -574,21 +618,12 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
                 ("Ctrl+b", "Scroll up one page"),
                 ("c", "Copy commit hash to clipboard"),
                 ("r", "Reload from current branch"),
+                ("n", "Show sample toast"),
                 ("Esc", "Close detail view"),
             ],
         ),
-        Screen::Error(_) => (
-            "Error",
-            &[
-                ("Enter", "Quit"),
-            ],
-        ),
-        Screen::Alert(_) => (
-            "Alert",
-            &[
-                ("Enter / Esc", "Dismiss"),
-            ],
-        ),
+        Screen::Error(_) => ("Error", &[("Enter", "Quit")]),
+        Screen::Alert(_) => ("Alert", &[("Enter / Esc", "Dismiss")]),
         Screen::Loading => return, // help should never appear during loading
     };
 
@@ -607,13 +642,9 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
 
     // Close hint
     lines.push(Line::from(Span::styled(String::new(), dim_style)));
-    lines.push(Line::from(Span::styled(
-        " [Esc/?] close ",
-        dim_style,
-    )));
+    lines.push(Line::from(Span::styled(" [Esc/?] close ", dim_style)));
 
-    let content = Paragraph::new(Text::from(lines))
-        .style(Style::default().bg(bg_color));
+    let content = Paragraph::new(Text::from(lines)).style(Style::default().bg(bg_color));
     frame.render_widget(content, inner);
 }
 
@@ -663,14 +694,11 @@ pub fn render_alert_overlay(frame: &mut Frame, app: &App, kind: &AlertKind) {
 
     let layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(1),
-            Constraint::Length(1),
-        ])
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(inner);
 
-    let msg_para = Paragraph::new(Line::from(Span::styled(msg, value_style)))
-        .alignment(Alignment::Center);
+    let msg_para =
+        Paragraph::new(Line::from(Span::styled(msg, value_style))).alignment(Alignment::Center);
     frame.render_widget(msg_para, layout[0]);
 
     let hint = Paragraph::new(Line::from(Span::styled(
@@ -679,6 +707,93 @@ pub fn render_alert_overlay(frame: &mut Frame, app: &App, kind: &AlertKind) {
     )))
     .alignment(Alignment::Center);
     frame.render_widget(hint, layout[1]);
+}
+
+/// Compute the screen rectangle occupied by the current Toast, if any.
+///
+/// Exported so the production event loop can test mouse clicks against it.
+pub fn toast_area(app: &App, frame_area: Rect) -> Option<Rect> {
+    let toast = app.toast.as_ref()?;
+    let min_width = (frame_area.width as f64 * TOAST_MIN_WIDTH_FRAC) as u16;
+    let max_width = (frame_area.width as f64 * TOAST_MAX_WIDTH_FRAC) as u16;
+
+    let content_width = toast.message.width() as u16;
+    let width = content_width
+        .saturating_add(TOAST_HPADDING * 2)
+        .clamp(min_width, max_width);
+
+    let wrap_width = width.saturating_sub(TOAST_HPADDING * 2) as usize;
+    let line_count = wrap_line_count(&toast.message, wrap_width.max(1));
+    let height = line_count.clamp(1, TOAST_MAX_HEIGHT as usize) as u16 + 2; // +2 for borders
+
+    let x = frame_area
+        .width
+        .saturating_sub(width)
+        .saturating_sub(TOAST_MARGIN_RIGHT);
+    let y = frame_area
+        .height
+        .saturating_sub(height)
+        .saturating_sub(TOAST_MARGIN_BOTTOM);
+
+    Some(Rect {
+        x,
+        y,
+        width,
+        height,
+    })
+}
+
+/// Count how many visual lines `text` occupies when wrapped at `width`.
+fn wrap_line_count(text: &str, width: usize) -> usize {
+    if width == 0 {
+        return 1;
+    }
+    let mut lines = 0usize;
+    let mut current_width = 0usize;
+    for word in text.split_whitespace() {
+        let word_width = word.width();
+        if current_width == 0 {
+            // First word on the line.
+            lines += word_width.div_ceil(width).max(1);
+            current_width = word_width % width;
+        } else if current_width + 1 + word_width <= width {
+            current_width += 1 + word_width;
+        } else {
+            lines += word_width.div_ceil(width).max(1);
+            current_width = word_width % width;
+        }
+    }
+    lines.max(1)
+}
+
+/// Render a transient Toast popup in the bottom-right corner.
+pub fn render_toast(frame: &mut Frame, app: &App) {
+    let colors = &app.colors;
+    let area = frame.area();
+    let toast_area = match toast_area(app, area) {
+        Some(a) => a,
+        None => return,
+    };
+    let toast = app.toast.as_ref().unwrap();
+
+    let border_color = hex_color(&colors.detail_border);
+    let bg_color = hex_color(&colors.detail_bg);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color))
+        .style(Style::default().bg(bg_color));
+    let inner = block.inner(toast_area);
+
+    frame.render_widget(Clear, toast_area);
+    frame.render_widget(block, toast_area);
+
+    let text = Paragraph::new(Line::from(Span::styled(
+        toast.message.clone(),
+        Style::default().fg(hex_color(&colors.detail_value)),
+    )))
+    .wrap(Wrap { trim: true })
+    .style(Style::default().bg(bg_color));
+    frame.render_widget(text, inner);
 }
 
 /// Render a transient notification in the footer area.
