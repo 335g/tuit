@@ -4,6 +4,9 @@ A TUI git log viewer built with ratatui. Displays a scrollable list of commits a
 
 ## Language
 
+**Repository Path**:
+The filesystem path of the Git repository that tuit opens. Defaults to the current working directory; may be overridden when launching the application.
+
 **Commit**:
 A git commit, identified by its abbreviated hash (7 chars), with an author, relative timestamp, and a one-line subject message.
 
