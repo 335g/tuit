@@ -134,12 +134,17 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
         .split(area);
 
     // --- Header ---
+    let branch_text = app.current_branch.clone();
+    let version_text = format!("tuit {} ", env!("CARGO_PKG_VERSION"));
+    let header_width = layout[0].width as usize;
+    let branch_width = branch_text.width();
+    let version_width = version_text.width();
+    let padding_width = header_width.saturating_sub(branch_width + version_width);
+
     let header_line = Line::from(vec![
-        Span::styled(" tuit ", Style::default().bold()),
-        Span::styled(
-            format!(" on {} ", app.current_branch),
-            Style::default().fg(Color::DarkGray),
-        ),
+        Span::styled(branch_text, Style::default().bold()),
+        Span::styled(" ".repeat(padding_width), Style::default()),
+        Span::styled(version_text, Style::default().fg(Color::DarkGray)),
     ]);
     let header = Paragraph::new(header_line);
     frame.render_widget(header, layout[0]);
