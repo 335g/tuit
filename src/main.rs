@@ -3,10 +3,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::ExecutableCommand;
-use crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
-    MouseEvent, MouseEventKind, poll,
-};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, poll};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
@@ -37,7 +34,6 @@ mod ui;
 fn main() -> Result<()> {
     enable_raw_mode()?;
     io::stdout().execute(EnterAlternateScreen)?;
-    io::stdout().execute(EnableMouseCapture)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
 
     // Load config.
@@ -45,7 +41,7 @@ fn main() -> Result<()> {
         theme: "default".into(),
         colors: config::default_colors(),
         poll_interval_ms: 2000,
-        toast_timeout_ms: 3000,
+        notification_timeout_ms: 3000,
     });
 
     // Initialise app and load commits.
@@ -61,18 +57,10 @@ fn main() -> Result<()> {
 
     // Live event loop: poll for both keyboard input and timer-based git sync.
     loop {
-        // Block up to `poll_interval` for an input event.
+        // Block up to `poll_interval` for a key press.
         if poll(poll_interval)? {
-            match event::read()? {
-                Event::Key(key) => {
-                    if key.kind == KeyEventKind::Press {
-                        if let Some(k) = convert_key(key) {
-                            handle_input(&mut app, k);
-                        }
-                    }
-                }
-                Event::Mouse(mouse) => handle_mouse(&mut app, mouse),
-                _ => {}
+            if let Some(key) = read_key()? {
+                handle_input(&mut app, key);
             }
         }
 
@@ -90,53 +78,32 @@ fn main() -> Result<()> {
     }
 
     // Teardown.
-    io::stdout().execute(DisableMouseCapture)?;
-    io::stdout().execute(LeaveAlternateScreen)?;
     disable_raw_mode()?;
+    io::stdout().execute(LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
     Ok(())
 }
 
-/// Convert a crossterm key event into our simplified `Key` enum.
-fn convert_key(key: crossterm::event::KeyEvent) -> Option<Key> {
-    if key.kind != KeyEventKind::Press {
-        return None;
-    }
-    match key.code {
-        KeyCode::Esc => Some(Key::Esc),
-        KeyCode::Enter => Some(Key::Enter),
-        KeyCode::Up => Some(Key::Up),
-        KeyCode::Down => Some(Key::Down),
-        KeyCode::PageUp => Some(Key::PageUp),
-        KeyCode::PageDown => Some(Key::PageDown),
-        KeyCode::Char(c) if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Key::Ctrl(c)),
-        KeyCode::Char(c) => Some(Key::Char(c)),
-        _ => None,
-    }
-}
-
-/// Handle a crossterm mouse event (production loop only).
-fn handle_mouse(app: &mut App, mouse: MouseEvent) {
-    if !matches!(mouse.kind, MouseEventKind::Down(_)) {
-        return;
-    }
-    if app.toast.is_none() {
-        return;
-    }
-    // We don't have the frame area here, so we recompute the toast rectangle
-    // using the current terminal size via crossterm.
-    let size = crossterm::terminal::size().unwrap_or((80, 24));
-    let frame_area = ratatui::layout::Rect::new(0, 0, size.0, size.1);
-    if let Some(area) = ui::toast_area(app, frame_area) {
-        if area.x <= mouse.column
-            && mouse.column < area.x + area.width
-            && area.y <= mouse.row
-            && mouse.row < area.y + area.height
-        {
-            app.dismiss_toast();
+/// Read a single key event from crossterm.
+fn read_key() -> Result<Option<Key>> {
+    if let Event::Key(key) = event::read()? {
+        if key.kind == KeyEventKind::Press {
+            let k = match key.code {
+                KeyCode::Esc => Key::Esc,
+                KeyCode::Enter => Key::Enter,
+                KeyCode::Up => Key::Up,
+                KeyCode::Down => Key::Down,
+                KeyCode::PageUp => Key::PageUp,
+                KeyCode::PageDown => Key::PageDown,
+                KeyCode::Char(c) if key.modifiers.contains(KeyModifiers::CONTROL) => Key::Ctrl(c),
+                KeyCode::Char(c) => Key::Char(c),
+                _ => return Ok(None),
+            };
+            return Ok(Some(k));
         }
     }
+    Ok(None)
 }
 
 /// Generic application entry point that accepts any Backend and any key-event
@@ -153,7 +120,7 @@ where
         theme: "default".into(),
         colors: config::default_colors(),
         poll_interval_ms: 2000,
-        toast_timeout_ms: 3000,
+        notification_timeout_ms: 3000,
     });
     let config = cfg;
 
@@ -211,12 +178,6 @@ pub fn handle_input(app: &mut App, key: Key) {
         return;
     }
 
-    // Global: n shows a sample toast notification.
-    if key == Key::Char('n') {
-        app.show_sample_toast();
-        return;
-    }
-
     match &app.screen {
         Screen::List => match key {
             Key::Up | Key::Char('k') => app.navigate_up(),
@@ -252,8 +213,8 @@ pub fn handle_input(app: &mut App, key: Key) {
 }
 
 /// Copy the currently focused commit's full OID to the system clipboard.
-/// Shows a Toast on success; fails silently if the clipboard is unavailable
-/// (headless environment, etc.).
+/// Shows a footer notification on success; fails silently if the clipboard
+/// is unavailable (headless environment, etc.).
 fn copy_commit_hash(app: &mut App) {
     let oid = match app.current_commit_oid() {
         Some(o) => o,
@@ -263,7 +224,7 @@ fn copy_commit_hash(app: &mut App) {
     if let Ok(mut clipboard) = arboard::Clipboard::new() {
         if clipboard.set_text(oid.clone()).is_ok() {
             let short = oid.chars().take(7).collect::<String>();
-            app.set_toast(format!("Copied {} to clipboard", short));
+            app.set_notification(format!("Copied {} to clipboard", short));
         }
     }
 }
@@ -461,7 +422,7 @@ mod e2e_tests {
             theme: "default".into(),
             colors: config::default_colors(),
             poll_interval_ms: 2000,
-            toast_timeout_ms: 3000,
+            notification_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
         app.load_commits();
@@ -509,8 +470,8 @@ mod e2e_tests {
     }
 
     #[test]
-    fn poll_head_change_shows_toast() {
-        let tmp = std::env::temp_dir().join("tuit-e2e-poll-head-toast");
+    fn poll_head_change_shows_notification() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-poll-head-notification");
         init_repo(&tmp, 2);
 
         let prev_dir = std::env::current_dir().unwrap();
@@ -520,7 +481,7 @@ mod e2e_tests {
             theme: "default".into(),
             colors: config::default_colors(),
             poll_interval_ms: 2000,
-            toast_timeout_ms: 3000,
+            notification_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
         app.load_commits();
@@ -528,11 +489,14 @@ mod e2e_tests {
         // First poll records the initial HEAD.
         app.poll();
         assert!(app.current_head_oid.is_some());
-        assert!(app.toast.is_none(), "No toast on initial HEAD recording");
+        assert!(
+            app.notification.is_none(),
+            "No notification on initial HEAD recording"
+        );
 
         // Add a new commit so HEAD changes.
-        let file = tmp.join("head-toast.txt");
-        std::fs::write(&file, "head toast content").unwrap();
+        let file = tmp.join("head-notification.txt");
+        std::fs::write(&file, "head notification content").unwrap();
         Command::new("git")
             .args(["-C", &tmp.to_string_lossy(), "add", &file.to_string_lossy()])
             .status()
@@ -544,7 +508,7 @@ mod e2e_tests {
                 "commit",
                 "--allow-empty",
                 "-m",
-                "Head change toast commit",
+                "Head change notification commit",
             ])
             .env("GIT_AUTHOR_NAME", "Test User")
             .env("GIT_AUTHOR_EMAIL", "test@example.com")
@@ -557,11 +521,18 @@ mod e2e_tests {
         app.last_poll_time = std::time::Instant::now() - std::time::Duration::from_millis(5000);
         app.poll();
 
-        assert!(app.toast.is_some(), "Expected toast after HEAD change");
         assert!(
-            app.toast.as_ref().unwrap().message.contains("HEAD moved"),
-            "Expected HEAD moved toast, got: {:?}",
-            app.toast
+            app.notification.is_some(),
+            "Expected notification after HEAD change"
+        );
+        assert!(
+            app.notification
+                .as_ref()
+                .unwrap()
+                .message
+                .contains("HEAD moved"),
+            "Expected HEAD moved notification, got: {:?}",
+            app.notification
         );
 
         std::env::set_current_dir(prev_dir).unwrap();
@@ -579,7 +550,7 @@ mod e2e_tests {
             theme: "default".into(),
             colors: config::default_colors(),
             poll_interval_ms: 2000,
-            toast_timeout_ms: 3000,
+            notification_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
         app.load_commits();
@@ -667,7 +638,7 @@ mod e2e_tests {
             theme: "default".into(),
             colors: config::default_colors(),
             poll_interval_ms: 2000,
-            toast_timeout_ms: 3000,
+            notification_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
         app.load_commits();
@@ -747,7 +718,7 @@ mod e2e_tests {
             theme: "default".into(),
             colors: config::default_colors(),
             poll_interval_ms: 2000,
-            toast_timeout_ms: 3000,
+            notification_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
         app.load_commits();
@@ -844,7 +815,7 @@ mod e2e_tests {
             theme: "default".into(),
             colors: config::default_colors(),
             poll_interval_ms: 2000,
-            toast_timeout_ms: 3000,
+            notification_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
         app.load_commits();
@@ -895,55 +866,5 @@ mod e2e_tests {
                 "Commit subject {i} missing in 30-col rendering:\n{content}",
             );
         }
-    }
-
-    #[test]
-    fn sample_toast_key_renders_popup() {
-        let tmp = std::env::temp_dir().join("tuit-e2e-toast");
-        init_repo(&tmp, 2);
-
-        let backend = run_with_events(&tmp, vec![Key::Char('n'), Key::Char('q')]);
-        let content = buf_to_string(backend.buffer());
-
-        assert!(
-            content.contains("Sample toast notification"),
-            "Expected sample toast message in buffer, got:\n{content}",
-        );
-    }
-
-    #[test]
-    fn toast_dismissal_clears_state() {
-        let cfg = config::Config {
-            theme: "default".into(),
-            colors: config::default_colors(),
-            poll_interval_ms: 2000,
-            toast_timeout_ms: 3000,
-        };
-        let mut app = App::new(cfg);
-
-        app.show_sample_toast();
-        assert!(app.toast.is_some(), "Toast should be set");
-
-        app.dismiss_toast();
-        assert!(app.toast.is_none(), "Toast should be dismissed");
-    }
-
-    #[test]
-    fn toast_expires_after_timeout() {
-        let cfg = config::Config {
-            theme: "default".into(),
-            colors: config::default_colors(),
-            poll_interval_ms: 2000,
-            toast_timeout_ms: 1,
-        };
-        let mut app = App::new(cfg);
-
-        app.show_sample_toast();
-        assert!(app.toast.is_some(), "Toast should be set");
-
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        app.poll();
-
-        assert!(app.toast.is_none(), "Toast should have expired");
     }
 }

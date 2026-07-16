@@ -7,19 +7,6 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-/// Right margin (in cells) between a Toast and the screen edge.
-const TOAST_MARGIN_RIGHT: u16 = 1;
-/// Bottom margin (in cells) between a Toast and the screen edge.
-const TOAST_MARGIN_BOTTOM: u16 = 1;
-/// Horizontal padding (in cells) inside a Toast.
-const TOAST_HPADDING: u16 = 2;
-/// Maximum height (in lines) of a Toast.
-const TOAST_MAX_HEIGHT: u16 = 5;
-/// Minimum width of a Toast as a fraction of the screen width.
-const TOAST_MIN_WIDTH_FRAC: f64 = 0.3;
-/// Maximum width of a Toast as a fraction of the screen width.
-const TOAST_MAX_WIDTH_FRAC: f64 = 0.8;
-
 use crate::app::{AlertKind, App, Screen};
 use crate::config::Colors;
 
@@ -111,9 +98,9 @@ pub fn render(frame: &mut Frame, app: &App) {
         }
     }
 
-    // Transient bottom-right toast popup.
-    if app.toast.is_some() {
-        render_toast(frame, app);
+    // Transient footer notification.
+    if app.notification.is_some() {
+        render_notification(frame, app);
     }
 
     // Help overlay on top of everything else.
@@ -600,7 +587,6 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
                 ("Enter", "Show commit details"),
                 ("c", "Copy commit hash to clipboard"),
                 ("r", "Reload from current branch"),
-                ("n", "Show sample toast"),
                 ("q", "Quit tuit"),
             ],
         ),
@@ -613,7 +599,6 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
                 ("Ctrl+b", "Scroll up one page"),
                 ("c", "Copy commit hash to clipboard"),
                 ("r", "Reload from current branch"),
-                ("n", "Show sample toast"),
                 ("Esc", "Close detail view"),
             ],
         ),
@@ -704,91 +689,33 @@ pub fn render_alert_overlay(frame: &mut Frame, app: &App, kind: &AlertKind) {
     frame.render_widget(hint, layout[1]);
 }
 
-/// Compute the screen rectangle occupied by the current Toast, if any.
+/// Render a transient notification in the footer area.
 ///
-/// Exported so the production event loop can test mouse clicks against it.
-pub fn toast_area(app: &App, frame_area: Rect) -> Option<Rect> {
-    let toast = app.toast.as_ref()?;
-    let min_width = (frame_area.width as f64 * TOAST_MIN_WIDTH_FRAC) as u16;
-    let max_width = (frame_area.width as f64 * TOAST_MAX_WIDTH_FRAC) as u16;
-
-    let content_width = toast.message.width() as u16;
-    let width = content_width
-        .saturating_add(TOAST_HPADDING * 2)
-        .clamp(min_width, max_width);
-
-    let wrap_width = width.saturating_sub(TOAST_HPADDING * 2) as usize;
-    let line_count = wrap_line_count(&toast.message, wrap_width.max(1));
-    let height = line_count.clamp(1, TOAST_MAX_HEIGHT as usize) as u16 + 2; // +2 for borders
-
-    let x = frame_area
-        .width
-        .saturating_sub(width)
-        .saturating_sub(TOAST_MARGIN_RIGHT);
-    let y = frame_area
-        .height
-        .saturating_sub(height)
-        .saturating_sub(TOAST_MARGIN_BOTTOM);
-
-    Some(Rect {
-        x,
-        y,
-        width,
-        height,
-    })
-}
-
-/// Count how many visual lines `text` occupies when wrapped at `width`.
-fn wrap_line_count(text: &str, width: usize) -> usize {
-    if width == 0 {
-        return 1;
-    }
-    let mut lines = 0usize;
-    let mut current_width = 0usize;
-    for word in text.split_whitespace() {
-        let word_width = word.width();
-        if current_width == 0 {
-            // First word on the line.
-            lines += word_width.div_ceil(width).max(1);
-            current_width = word_width % width;
-        } else if current_width + 1 + word_width <= width {
-            current_width += 1 + word_width;
-        } else {
-            lines += word_width.div_ceil(width).max(1);
-            current_width = word_width % width;
-        }
-    }
-    lines.max(1)
-}
-
-/// Render a transient Toast popup in the bottom-right corner.
-pub fn render_toast(frame: &mut Frame, app: &App) {
+/// Fills the entire bottom row with the theme's accent colour and centres
+/// the message text.
+pub fn render_notification(frame: &mut Frame, app: &App) {
     let colors = &app.colors;
     let area = frame.area();
-    let toast_area = match toast_area(app, area) {
-        Some(a) => a,
+    let notif = match &app.notification {
+        Some(n) => n,
         None => return,
     };
-    let toast = app.toast.as_ref().unwrap();
 
-    let border_color = hex_color(&colors.detail_border);
-    let bg_color = hex_color(&colors.detail_bg);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(border_color))
-        .style(Style::default().bg(bg_color));
-    let inner = block.inner(toast_area);
+    // Notification bar at the very bottom of the screen, full width.
+    let bar = Rect {
+        x: 0,
+        y: area.height.saturating_sub(1),
+        width: area.width,
+        height: 1,
+    };
 
-    frame.render_widget(Clear, toast_area);
-    frame.render_widget(block, toast_area);
-
-    let text = Paragraph::new(Line::from(Span::styled(
-        toast.message.clone(),
-        Style::default().fg(hex_color(&colors.detail_value)),
+    let bg_color = hex_color(&colors.detail_border);
+    let notice = Paragraph::new(Line::from(Span::styled(
+        format!(" {} ", notif.message),
+        Style::default().fg(Color::Black).bg(bg_color),
     )))
-    .wrap(Wrap { trim: true })
-    .style(Style::default().bg(bg_color));
-    frame.render_widget(text, inner);
+    .alignment(Alignment::Center);
+    frame.render_widget(notice, bar);
 }
 
 /// Render the error screen.
