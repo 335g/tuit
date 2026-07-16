@@ -834,8 +834,12 @@ mod e2e_tests {
         let backend = run_with_events(&tmp, vec![Key::Char('r'), Key::Char('q')]);
         let content = buf_to_string(backend.buffer());
         assert!(
-            content.contains("on main"),
-            "Expected 'on main' in header, got:\n{content}"
+            content.contains("main"),
+            "Expected branch 'main' in header, got:\n{content}"
+        );
+        assert!(
+            content.contains("tuit"),
+            "Expected 'tuit' in header, got:\n{content}"
         );
         assert!(
             content.contains("Commit subject 0"),
