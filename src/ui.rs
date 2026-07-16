@@ -696,10 +696,10 @@ pub fn render_alert_overlay(frame: &mut Frame, app: &App, kind: &AlertKind) {
     frame.render_widget(hint, layout[1]);
 }
 
-/// Render a transient notification in the footer area.
+/// Render a transient notification in the header area.
 ///
-/// Fills the entire bottom row with the theme's accent colour and aligns
-/// the message text to the right.
+/// Aligns the message text to the right of the top row, using the theme's
+/// accent colour as the background.
 pub fn render_notification(frame: &mut Frame, app: &App) {
     let colors = &app.colors;
     let area = frame.area();
@@ -708,10 +708,10 @@ pub fn render_notification(frame: &mut Frame, app: &App) {
         None => return,
     };
 
-    // Notification bar at the very bottom of the screen, full width.
+    // Notification bar at the top of the screen, full width.
     let bar = Rect {
         x: 0,
-        y: area.height.saturating_sub(1),
+        y: 0,
         width: area.width,
         height: 1,
     };
