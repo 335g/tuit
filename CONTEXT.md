@@ -37,17 +37,11 @@ One of: Loading, List, Detail, Error, Alert. The Alert screen carries an AlertKi
 **AlertKind**:
 A discriminated union identifying the reason for a modal alert. Currently: `CommitDeleted { oid }`.
 
-**Toast**:
-A transient non-blocking popup displayed in the bottom-right corner of the screen. Carries a `message: String` and an expiration time. Used for user-facing announcements such as HEAD Change alerts, copy confirmations, and future autocommit notifications.
+**Notification**:
+A transient non-blocking message displayed in the footer. The entire bottom row is filled with the theme's accent colour and the message text is centred. Used for HEAD Change announcements and Copy to Clipboard confirmations.
 
-**Toast Timeout**:
-The duration (in milliseconds) that a Toast is displayed before automatically dismissing. Configurable; defaults to 3000 ms.
-
-**Toast Dismissal**:
-The act of closing a Toast, either by waiting for its timeout to expire or by clicking the Toast area with the mouse.
-
-**Sample Toast**:
-A Toast triggered manually for demonstration or debugging purposes (e.g. by pressing a dedicated key).
+**Notification Timeout**:
+The duration (in milliseconds) that a footer notification is displayed before automatically dismissing. Configurable; defaults to 3000 ms.
 
 **Copy to Clipboard**:
 The action of copying a commit's full 40-character OID hex string to the system clipboard, triggered by pressing `c` in either the Commit List or the Commit Detail screen. Uses the system-native clipboard API via the `arboard` crate.
