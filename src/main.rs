@@ -3,7 +3,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::ExecutableCommand;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, poll};
+use crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+    MouseEvent, MouseEventKind, poll,
+};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
@@ -34,6 +37,7 @@ mod ui;
 fn main() -> Result<()> {
     enable_raw_mode()?;
     io::stdout().execute(EnterAlternateScreen)?;
+    io::stdout().execute(EnableMouseCapture)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
 
     // Load config.
@@ -42,6 +46,7 @@ fn main() -> Result<()> {
         colors: config::default_colors(),
         poll_interval_ms: 2000,
         notification_timeout_ms: 3000,
+        toast_timeout_ms: 3000,
     });
 
     // Initialise app and load commits.
@@ -57,10 +62,18 @@ fn main() -> Result<()> {
 
     // Live event loop: poll for both keyboard input and timer-based git sync.
     loop {
-        // Block up to `poll_interval` for a key press.
+        // Block up to `poll_interval` for an input event.
         if poll(poll_interval)? {
-            if let Some(key) = read_key()? {
-                handle_input(&mut app, key);
+            match event::read()? {
+                Event::Key(key) => {
+                    if key.kind == KeyEventKind::Press {
+                        if let Some(k) = convert_key(key) {
+                            handle_input(&mut app, k);
+                        }
+                    }
+                }
+                Event::Mouse(mouse) => handle_mouse(&mut app, mouse),
+                _ => {}
             }
         }
 
@@ -78,32 +91,53 @@ fn main() -> Result<()> {
     }
 
     // Teardown.
-    disable_raw_mode()?;
+    io::stdout().execute(DisableMouseCapture)?;
     io::stdout().execute(LeaveAlternateScreen)?;
+    disable_raw_mode()?;
     terminal.show_cursor()?;
 
     Ok(())
 }
 
-/// Read a single key event from crossterm.
-fn read_key() -> Result<Option<Key>> {
-    if let Event::Key(key) = event::read()? {
-        if key.kind == KeyEventKind::Press {
-            let k = match key.code {
-                KeyCode::Esc => Key::Esc,
-                KeyCode::Enter => Key::Enter,
-                KeyCode::Up => Key::Up,
-                KeyCode::Down => Key::Down,
-                KeyCode::PageUp => Key::PageUp,
-                KeyCode::PageDown => Key::PageDown,
-                KeyCode::Char(c) if key.modifiers.contains(KeyModifiers::CONTROL) => Key::Ctrl(c),
-                KeyCode::Char(c) => Key::Char(c),
-                _ => return Ok(None),
-            };
-            return Ok(Some(k));
+/// Convert a crossterm key event into our simplified `Key` enum.
+fn convert_key(key: crossterm::event::KeyEvent) -> Option<Key> {
+    if key.kind != KeyEventKind::Press {
+        return None;
+    }
+    match key.code {
+        KeyCode::Esc => Some(Key::Esc),
+        KeyCode::Enter => Some(Key::Enter),
+        KeyCode::Up => Some(Key::Up),
+        KeyCode::Down => Some(Key::Down),
+        KeyCode::PageUp => Some(Key::PageUp),
+        KeyCode::PageDown => Some(Key::PageDown),
+        KeyCode::Char(c) if key.modifiers.contains(KeyModifiers::CONTROL) => Some(Key::Ctrl(c)),
+        KeyCode::Char(c) => Some(Key::Char(c)),
+        _ => None,
+    }
+}
+
+/// Handle a crossterm mouse event (production loop only).
+fn handle_mouse(app: &mut App, mouse: MouseEvent) {
+    if !matches!(mouse.kind, MouseEventKind::Down(_)) {
+        return;
+    }
+    if app.toast.is_none() {
+        return;
+    }
+    // We don't have the frame area here, so we recompute the toast rectangle
+    // using the current terminal size via crossterm.
+    let size = crossterm::terminal::size().unwrap_or((80, 24));
+    let frame_area = ratatui::layout::Rect::new(0, 0, size.0, size.1);
+    if let Some(area) = ui::toast_area(app, frame_area) {
+        if area.x <= mouse.column
+            && mouse.column < area.x + area.width
+            && area.y <= mouse.row
+            && mouse.row < area.y + area.height
+        {
+            app.dismiss_toast();
         }
     }
-    Ok(None)
 }
 
 /// Generic application entry point that accepts any Backend and any key-event
@@ -121,6 +155,7 @@ where
         colors: config::default_colors(),
         poll_interval_ms: 2000,
         notification_timeout_ms: 3000,
+        toast_timeout_ms: 3000,
     });
     let config = cfg;
 
@@ -175,6 +210,12 @@ pub fn handle_input(app: &mut App, key: Key) {
     // Global: r reloads commit list from the current branch.
     if key == Key::Char('r') {
         app.reload();
+        return;
+    }
+
+    // Global: n shows a sample toast notification.
+    if key == Key::Char('n') {
+        app.show_sample_toast();
         return;
     }
 
@@ -419,6 +460,7 @@ mod e2e_tests {
             colors: config::default_colors(),
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
+            toast_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
         app.load_commits();
@@ -478,6 +520,7 @@ mod e2e_tests {
             colors: config::default_colors(),
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
+            toast_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
         app.load_commits();
@@ -490,8 +533,7 @@ mod e2e_tests {
         app.poll();
 
         // Second poll: HEAD unchanged, timestamp might have advanced
-        app.last_poll_time = std::time::Instant::now()
-            - std::time::Duration::from_millis(5000); // force poll to run
+        app.last_poll_time = std::time::Instant::now() - std::time::Duration::from_millis(5000); // force poll to run
         app.poll();
 
         // Should still be in Detail with same OID
@@ -567,6 +609,7 @@ mod e2e_tests {
             colors: config::default_colors(),
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
+            toast_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
         app.load_commits();
@@ -588,7 +631,9 @@ mod e2e_tests {
         assert_eq!(app.current_branch, "feature");
         assert_eq!(app.commits.len(), 3);
         assert!(
-            app.commits[0].message.contains("Commit subject 2 (feature)"),
+            app.commits[0]
+                .message
+                .contains("Commit subject 2 (feature)"),
             "Expected feature branch commit at top, got: {}",
             app.commits[0].message
         );
@@ -617,7 +662,13 @@ mod e2e_tests {
             .status()
             .unwrap();
         Command::new("git")
-            .args(["-C", &tmp.to_string_lossy(), "commit", "-m", "Feature commit"])
+            .args([
+                "-C",
+                &tmp.to_string_lossy(),
+                "commit",
+                "-m",
+                "Feature commit",
+            ])
             .env("GIT_AUTHOR_NAME", "Test User")
             .env("GIT_AUTHOR_EMAIL", "test@example.com")
             .env("GIT_COMMITTER_NAME", "Test User")
@@ -639,6 +690,7 @@ mod e2e_tests {
             colors: config::default_colors(),
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
+            toast_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
         app.load_commits();
@@ -690,7 +742,13 @@ mod e2e_tests {
             .status()
             .unwrap();
         Command::new("git")
-            .args(["-C", &tmp.to_string_lossy(), "commit", "-m", "Only on feature"])
+            .args([
+                "-C",
+                &tmp.to_string_lossy(),
+                "commit",
+                "-m",
+                "Only on feature",
+            ])
             .env("GIT_AUTHOR_NAME", "Test User")
             .env("GIT_AUTHOR_EMAIL", "test@example.com")
             .env("GIT_COMMITTER_NAME", "Test User")
@@ -730,6 +788,7 @@ mod e2e_tests {
             colors: config::default_colors(),
             poll_interval_ms: 2000,
             notification_timeout_ms: 3000,
+            toast_timeout_ms: 3000,
         };
         let mut app = App::new(cfg);
         app.load_commits();
@@ -780,5 +839,57 @@ mod e2e_tests {
                 "Commit subject {i} missing in 30-col rendering:\n{content}",
             );
         }
+    }
+
+    #[test]
+    fn sample_toast_key_renders_popup() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-toast");
+        init_repo(&tmp, 2);
+
+        let backend = run_with_events(&tmp, vec![Key::Char('n'), Key::Char('q')]);
+        let content = buf_to_string(backend.buffer());
+
+        assert!(
+            content.contains("Sample toast notification"),
+            "Expected sample toast message in buffer, got:\n{content}",
+        );
+    }
+
+    #[test]
+    fn toast_dismissal_clears_state() {
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+            toast_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg);
+
+        app.show_sample_toast();
+        assert!(app.toast.is_some(), "Toast should be set");
+
+        app.dismiss_toast();
+        assert!(app.toast.is_none(), "Toast should be dismissed");
+    }
+
+    #[test]
+    fn toast_expires_after_timeout() {
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+            toast_timeout_ms: 1,
+        };
+        let mut app = App::new(cfg);
+
+        app.show_sample_toast();
+        assert!(app.toast.is_some(), "Toast should be set");
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        app.poll();
+
+        assert!(app.toast.is_none(), "Toast should have expired");
     }
 }
