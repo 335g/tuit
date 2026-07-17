@@ -235,6 +235,12 @@ pub fn handle_input(app: &mut App, key: Key) {
         return;
     }
 
+    // Temporary: always show notification when h is pressed (for debugging).
+    if key == Key::Char('h') {
+        app.set_notification("DEBUG: h key pressed".to_string());
+        // Still call open_in_hunk so the real logic runs too
+    }
+
     match &app.screen {
         Screen::List => match key {
             Key::Up | Key::Char('k') => app.navigate_up(),
