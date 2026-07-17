@@ -235,11 +235,7 @@ pub fn handle_input(app: &mut App, key: Key) {
         return;
     }
 
-    // Temporary: always show notification when h is pressed (for debugging).
-    if key == Key::Char('h') {
-        app.set_notification("DEBUG: h key pressed".to_string());
-        // Still call open_in_hunk so the real logic runs too
-    }
+
 
     match &app.screen {
         Screen::List => match key {
@@ -249,7 +245,7 @@ pub fn handle_input(app: &mut App, key: Key) {
             Key::Ctrl('b') | Key::PageUp => app.navigate_page_up(),
             Key::Enter => app.select_commit(),
             Key::Char('c') => copy_commit_hash(app),
-            Key::Char('h') => app.open_in_hunk(),
+            Key::Char('o') => app.open_in_hunk(),
             Key::Char('q') => app.quit(),
             Key::MouseClick(row) => select_commit_at_row(app, row),
             _ => {}
@@ -261,7 +257,7 @@ pub fn handle_input(app: &mut App, key: Key) {
             Key::Ctrl('f') | Key::PageDown => app.scroll_detail_page_down(),
             Key::Ctrl('b') | Key::PageUp => app.scroll_detail_page_up(),
             Key::Char('c') => copy_commit_hash(app),
-            Key::Char('h') => app.open_in_hunk(),
+            Key::Char('o') => app.open_in_hunk(),
             _ => {}
         },
         Screen::Error(_) => match key {
@@ -485,14 +481,14 @@ mod e2e_tests {
 
         let _backend = run_with_events_and_launcher(
             &tmp,
-            vec![Key::Char('h'), Key::Char('q')],
+            vec![Key::Char('o'), Key::Char('q')],
             &mut launcher,
         );
 
         assert_eq!(
             calls.borrow().as_slice(),
             &[expected_oid],
-            "h in Commit List should launch hunk with the selected commit's full OID",
+            "o in Commit List should launch hunk with the selected commit's full OID",
         );
     }
 
@@ -516,7 +512,7 @@ mod e2e_tests {
             vec![
                 Key::Char('j'),
                 Key::Enter,
-                Key::Char('h'),
+                Key::Char('o'),
                 Key::Esc,
                 Key::Char('q'),
             ],
@@ -526,7 +522,7 @@ mod e2e_tests {
         assert_eq!(
             calls.borrow().as_slice(),
             &[expected_oid],
-            "h in Commit Detail should launch hunk with the viewed commit's full OID",
+            "o in Commit Detail should launch hunk with the viewed commit's full OID",
         );
     }
 
@@ -541,7 +537,7 @@ mod e2e_tests {
 
         let backend = run_with_events_and_launcher(
             &tmp,
-            vec![Key::Char('h'), Key::Char('q')],
+            vec![Key::Char('o'), Key::Char('q')],
             &mut launcher,
         );
 
@@ -561,7 +557,7 @@ mod e2e_tests {
 
         let backend = run_with_events_and_launcher(
             &tmp,
-            vec![Key::Char('h'), Key::Char('q')],
+            vec![Key::Char('o'), Key::Char('q')],
             &mut launcher,
         );
 
@@ -587,13 +583,13 @@ mod e2e_tests {
 
         let _backend = run_with_events_and_launcher(
             &tmp,
-            vec![Key::Char('h'), Key::Enter],
+            vec![Key::Char('o'), Key::Enter],
             &mut launcher,
         );
 
         assert!(
             calls.borrow().is_empty(),
-            "h on a screen without a focused commit must not launch hunk",
+            "o on a screen without a focused commit must not launch hunk",
         );
     }
 
