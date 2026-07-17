@@ -49,3 +49,15 @@ The duration (in milliseconds) that a footer notification is displayed before au
 **Copy to Clipboard**:
 The action of copying a commit's full 40-character OID hex string to the system clipboard, triggered by pressing `c` in either the Commit List or the Commit Detail screen. Uses the system-native clipboard API via the `arboard` crate.
 _Avoid_: Short hash copy, abbreviated copy
+
+### Hunk Integration
+
+**Agent Review Loop**:
+The development workflow the Hunk integration serves: a coding agent's changes are auto-committed in meaningful units, the user reviews each commit and writes comments in Hunk, then feeds those comments back to the agent for fixes.
+
+**Hunk**:
+An external terminal diff review tool (modem-dev/hunk) that tuit integrates with. Provides multi-file review with inline comments, used as the feedback channel in the Agent Review Loop.
+
+**Open in Hunk**:
+The action of launching Hunk against the currently selected Commit, passing its OID as the review target. The unit of review is always a single Commit, matching the granularity produced by the Agent Review Loop's auto-commits.
+_Avoid_: Launch hunk, Review in hunk
