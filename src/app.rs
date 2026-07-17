@@ -433,6 +433,12 @@ impl App {
     /// without a focused commit.
     pub fn open_in_hunk(&mut self) {
         self.pending_hunk_launch = self.current_commit_oid();
+        // Diagnose: report whether there's a commit to launch hunk with.
+        let msg = match &self.pending_hunk_launch {
+            Some(_) => "DEBUG: open_in_hunk called — OID found".to_string(),
+            None => "DEBUG: open_in_hunk called — NO OID (screen has no commit)".to_string(),
+        };
+        self.set_notification(msg);
     }
 
     /// Apply the outcome of a finished Open in Hunk launch.
