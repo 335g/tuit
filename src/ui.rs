@@ -347,7 +347,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     frame.render_widget(list, layout[1]);
 
     // --- Footer ---
-    let footer_text = " c: copy hash | r: reload branch | Enter: detail | q: quit ";
+    let footer_text = " c: copy hash | h: hunk | r: reload branch | Enter: detail | q: quit ";
     let footer = Paragraph::new(Line::from(Span::styled(
         footer_text,
         Style::default().fg(Color::DarkGray),
@@ -592,6 +592,7 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
                 ("Enter", "Show commit details"),
                 ("c", "Copy commit hash to clipboard"),
                 ("r", "Reload from current branch"),
+                ("h", "Open commit in hunk for review"),
                 ("q", "Quit tuit"),
             ],
         ),
@@ -603,6 +604,7 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
                 ("Ctrl+f", "Scroll down one page"),
                 ("Ctrl+b", "Scroll up one page"),
                 ("c", "Copy commit hash to clipboard"),
+                ("h", "Open commit in hunk for review"),
                 ("r", "Reload from current branch"),
                 ("Esc", "Close detail view"),
             ],
