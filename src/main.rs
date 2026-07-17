@@ -1,5 +1,6 @@
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -14,7 +15,7 @@ use crossterm::terminal::{
 use ratatui::Terminal;
 use ratatui::backend::{Backend, CrosstermBackend};
 
-use crate::app::{App, Screen};
+use crate::app::{App, HunkOutcome, Screen};
 
 /// Simplified input event for the application.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -89,6 +90,11 @@ fn main() -> Result<()> {
         if poll(poll_interval)? {
             if let Some(key) = read_key()? {
                 handle_input(&mut app, key);
+                if drain_hunk_launch(&mut app, &mut launch_hunk) {
+                    // The alternate screen was handed to hunk and back;
+                    // force a full repaint.
+                    let _ = terminal.clear();
+                }
             }
         }
 
@@ -160,6 +166,7 @@ pub fn run_app<B: Backend>(
     terminal: &mut Terminal<B>,
     events: impl Iterator<Item = Key>,
     repo_path: PathBuf,
+    launcher: &mut dyn FnMut(&Path, &str) -> HunkOutcome,
 ) -> Result<()>
 where
     <B as Backend>::Error: Send + Sync + 'static,
@@ -185,6 +192,7 @@ where
     // 3. Event loop.
     for key in events {
         handle_input(&mut app, key);
+        drain_hunk_launch(&mut app, launcher);
 
         // Draw current state.
         terminal.draw(|frame| {
@@ -235,6 +243,7 @@ pub fn handle_input(app: &mut App, key: Key) {
             Key::Ctrl('b') | Key::PageUp => app.navigate_page_up(),
             Key::Enter => app.select_commit(),
             Key::Char('c') => copy_commit_hash(app),
+            Key::Char('h') => app.open_in_hunk(),
             Key::Char('q') => app.quit(),
             Key::MouseClick(row) => select_commit_at_row(app, row),
             _ => {}
@@ -246,6 +255,7 @@ pub fn handle_input(app: &mut App, key: Key) {
             Key::Ctrl('f') | Key::PageDown => app.scroll_detail_page_down(),
             Key::Ctrl('b') | Key::PageUp => app.scroll_detail_page_up(),
             Key::Char('c') => copy_commit_hash(app),
+            Key::Char('h') => app.open_in_hunk(),
             _ => {}
         },
         Screen::Error(_) => match key {
@@ -259,6 +269,48 @@ pub fn handle_input(app: &mut App, key: Key) {
         Screen::Loading => {
             // Ignore all input while loading.
         }
+    }
+}
+
+/// Execute a pending Open in Hunk launch, if any, and feed the outcome
+/// back into the app. Returns `true` when a launch happened, so the caller
+/// can force a full repaint after the TUI resumes.
+fn drain_hunk_launch(
+    app: &mut App,
+    launcher: &mut dyn FnMut(&Path, &str) -> HunkOutcome,
+) -> bool {
+    match app.pending_hunk_launch.take() {
+        Some(oid) => {
+            let outcome = launcher(&app.repo_path, &oid);
+            app.on_hunk_finished(outcome);
+            true
+        }
+        None => false,
+    }
+}
+
+/// Suspend the TUI, run `hunk show <oid>` in the foreground, and resume.
+/// The child process inherits the terminal, so hunk takes over the full
+/// screen until it exits.
+fn launch_hunk(repo_path: &Path, oid: &str) -> HunkOutcome {
+    let _ = disable_raw_mode();
+    let _ = io::stdout().execute(event::DisableMouseCapture);
+    let _ = io::stdout().execute(LeaveAlternateScreen);
+
+    let status = Command::new("hunk")
+        .arg("show")
+        .arg(oid)
+        .current_dir(repo_path)
+        .status();
+
+    let _ = enable_raw_mode();
+    let _ = io::stdout().execute(EnterAlternateScreen);
+    let _ = io::stdout().execute(event::EnableMouseCapture);
+
+    match status {
+        Ok(s) if s.success() => HunkOutcome::Success,
+        Ok(s) => HunkOutcome::Failed(format!("hunk exited with {s}")),
+        Err(e) => HunkOutcome::Failed(format!("Failed to launch hunk: {e}")),
     }
 }
 
@@ -299,11 +351,14 @@ fn copy_commit_hash(app: &mut App) {
 
 #[cfg(test)]
 mod e2e_tests {
+    use std::cell::RefCell;
     use std::path::Path;
     use std::process::Command;
+    use std::rc::Rc;
 
     use ratatui::backend::TestBackend;
 
+    use super::app::HunkOutcome;
     use super::*;
 
     /// Helper: create a temporary git repository at `path` with `n` commits.
@@ -361,6 +416,16 @@ mod e2e_tests {
 
     /// Run tuit against a git repo at `repo_path` with the given key events.
     fn run_with_events(repo_path: &Path, events: Vec<Key>) -> TestBackend {
+        run_with_events_and_launcher(repo_path, events, &mut |_, _| HunkOutcome::Success)
+    }
+
+    /// Run tuit with an injected hunk launcher, so tests can observe and
+    /// control Open in Hunk launches without spawning a real process.
+    fn run_with_events_and_launcher(
+        repo_path: &Path,
+        events: Vec<Key>,
+        launcher: &mut dyn FnMut(&Path, &str) -> HunkOutcome,
+    ) -> TestBackend {
         // Change to the repo directory before testing.
         let prev_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(repo_path).unwrap();
@@ -374,12 +439,156 @@ mod e2e_tests {
         // We can't easily override this in-process, but config::load() will
         // fall back to defaults when no files exist, which is fine.
 
-        let _ = super::run_app(&mut terminal, events.into_iter(), repo_path.to_path_buf());
+        let _ = super::run_app(
+            &mut terminal,
+            events.into_iter(),
+            repo_path.to_path_buf(),
+            launcher,
+        );
 
         // Restore working directory.
         std::env::set_current_dir(prev_dir).unwrap();
 
         terminal.backend().clone()
+    }
+
+    /// Resolve the full OID of `rev` in `repo_path` via the git CLI.
+    /// Independent source of truth for expected OIDs in assertions.
+    fn rev_parse(repo_path: &Path, rev: &str) -> String {
+        let out = Command::new("git")
+            .args(["-C", &repo_path.to_string_lossy(), "rev-parse", rev])
+            .output()
+            .unwrap();
+        String::from_utf8(out.stdout).unwrap().trim().to_string()
+    }
+
+    #[test]
+    fn h_in_list_launches_hunk_with_selected_commit_oid() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-hunk-list");
+        init_repo(&tmp, 2);
+
+        // The list is newest-first, so the initially selected commit is HEAD.
+        let expected_oid = rev_parse(&tmp, "HEAD");
+
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let calls2 = calls.clone();
+        let mut launcher = move |_path: &Path, oid: &str| {
+            calls2.borrow_mut().push(oid.to_string());
+            HunkOutcome::Success
+        };
+
+        let _backend = run_with_events_and_launcher(
+            &tmp,
+            vec![Key::Char('h'), Key::Char('q')],
+            &mut launcher,
+        );
+
+        assert_eq!(
+            calls.borrow().as_slice(),
+            &[expected_oid],
+            "h in Commit List should launch hunk with the selected commit's full OID",
+        );
+    }
+
+    #[test]
+    fn h_in_detail_launches_hunk_with_viewed_commit_oid() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-hunk-detail");
+        init_repo(&tmp, 2);
+
+        // Navigate to the older commit (HEAD~1), open its detail, then press h.
+        let expected_oid = rev_parse(&tmp, "HEAD~1");
+
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let calls2 = calls.clone();
+        let mut launcher = move |_path: &Path, oid: &str| {
+            calls2.borrow_mut().push(oid.to_string());
+            HunkOutcome::Success
+        };
+
+        let _backend = run_with_events_and_launcher(
+            &tmp,
+            vec![
+                Key::Char('j'),
+                Key::Enter,
+                Key::Char('h'),
+                Key::Esc,
+                Key::Char('q'),
+            ],
+            &mut launcher,
+        );
+
+        assert_eq!(
+            calls.borrow().as_slice(),
+            &[expected_oid],
+            "h in Commit Detail should launch hunk with the viewed commit's full OID",
+        );
+    }
+
+    #[test]
+    fn hunk_launch_failure_shows_footer_notification() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-hunk-failure");
+        init_repo(&tmp, 1);
+
+        let mut launcher = |_path: &Path, _oid: &str| {
+            HunkOutcome::Failed("Failed to launch hunk: command not found".to_string())
+        };
+
+        let backend = run_with_events_and_launcher(
+            &tmp,
+            vec![Key::Char('h'), Key::Char('q')],
+            &mut launcher,
+        );
+
+        let content = buf_to_string(backend.buffer());
+        assert!(
+            content.contains("Failed to launch hunk: command not found"),
+            "Failure notification should be rendered in the footer, got:\n{content}",
+        );
+    }
+
+    #[test]
+    fn hunk_launch_success_resumes_silently() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-hunk-success");
+        init_repo(&tmp, 1);
+
+        let mut launcher = |_path: &Path, _oid: &str| HunkOutcome::Success;
+
+        let backend = run_with_events_and_launcher(
+            &tmp,
+            vec![Key::Char('h'), Key::Char('q')],
+            &mut launcher,
+        );
+
+        let content = buf_to_string(backend.buffer());
+        assert!(
+            !content.contains("Failed") && !content.contains("exited with"),
+            "Successful launch should not raise any notification, got:\n{content}",
+        );
+    }
+
+    #[test]
+    fn h_on_error_screen_does_not_launch_hunk() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-hunk-error");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let calls2 = calls.clone();
+        let mut launcher = move |_path: &Path, oid: &str| {
+            calls2.borrow_mut().push(oid.to_string());
+            HunkOutcome::Success
+        };
+
+        let _backend = run_with_events_and_launcher(
+            &tmp,
+            vec![Key::Char('h'), Key::Enter],
+            &mut launcher,
+        );
+
+        assert!(
+            calls.borrow().is_empty(),
+            "h on a screen without a focused commit must not launch hunk",
+        );
     }
 
     #[test]
@@ -918,7 +1127,12 @@ mod e2e_tests {
 
         let backend = TestBackend::new(30, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        let _ = super::run_app(&mut terminal, vec![Key::Char('q')].into_iter(), tmp.clone());
+        let _ = super::run_app(
+            &mut terminal,
+            vec![Key::Char('q')].into_iter(),
+            tmp.clone(),
+            &mut |_, _| HunkOutcome::Success,
+        );
         let content = buf_to_string(terminal.backend().buffer());
 
         std::env::set_current_dir(prev_dir).unwrap();
