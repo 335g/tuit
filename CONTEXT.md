@@ -59,5 +59,5 @@ The development workflow the Hunk integration serves: a coding agent's changes a
 An external terminal diff review tool (modem-dev/hunk) that tuit integrates with. Provides multi-file review with inline comments, used as the feedback channel in the Agent Review Loop.
 
 **Open in Hunk**:
-The action of launching Hunk against the currently selected Commit, passing its OID as the review target, triggered by pressing `h` in either the Commit List or the Commit Detail screen. The unit of review is always a single Commit, matching the granularity produced by the Agent Review Loop's auto-commits.
+The action of launching Hunk against the currently selected Commit, passing its OID as the review target, triggered by pressing `o` in either the Commit List or the Commit Detail screen. The unit of review is always a single Commit, matching the granularity produced by the Agent Review Loop's auto-commits.
 _Avoid_: Launch hunk, Review in hunk
