@@ -34,6 +34,17 @@ pub struct Notification {
     pub expires_at: Instant,
 }
 
+/// Outcome of an Open in Hunk launch, reported back to the app by the
+/// event loop that performed the side effects.
+#[derive(Clone, Debug, PartialEq)]
+pub enum HunkOutcome {
+    /// Hunk ran and exited successfully — resume silently.
+    Success,
+    /// Hunk could not be started or exited non-zero. Carries a
+    /// user-facing message for the footer notification.
+    Failed(String),
+}
+
 /// Central application state.
 pub struct App {
     pub screen: Screen,
@@ -68,6 +79,9 @@ pub struct App {
     pub last_poll_time: Instant,
     /// Filesystem path of the Git repository being viewed.
     pub repo_path: PathBuf,
+    /// Pending Open in Hunk launch: the OID to review, set by `open_in_hunk`
+    /// and consumed by the event loop which performs the actual launch.
+    pub pending_hunk_launch: Option<String>,
 }
 
 impl App {
@@ -99,6 +113,7 @@ impl App {
             // Initialise to the past so the first poll always runs.
             last_poll_time: Instant::now() - Duration::from_millis(config.poll_interval_ms + 1),
             repo_path,
+            pending_hunk_launch: None,
         }
     }
 
@@ -408,6 +423,24 @@ impl App {
     /// Set the quit flag.
     pub fn quit(&mut self) {
         self.should_quit = true;
+    }
+
+    /// Record an Open in Hunk launch for the currently focused commit.
+    ///
+    /// Only records the intent; the event loop performs the actual launch
+    /// (suspend the TUI, run `hunk show <oid>`, resume) and reports the
+    /// result back via `on_hunk_finished`. Does nothing on screens
+    /// without a focused commit.
+    pub fn open_in_hunk(&mut self) {
+        self.pending_hunk_launch = self.current_commit_oid();
+    }
+
+    /// Apply the outcome of a finished Open in Hunk launch.
+    /// Failures surface as a footer notification; success resumes silently.
+    pub fn on_hunk_finished(&mut self, outcome: HunkOutcome) {
+        if let HunkOutcome::Failed(message) = outcome {
+            self.set_notification(message);
+        }
     }
 
     /// Reload the commit list from the current branch.
