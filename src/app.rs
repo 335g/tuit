@@ -493,19 +493,44 @@ impl App {
         }
     }
 
-    /// Open the file selection overlay for the currently focused commit.
-    /// Loads the changed file list from git.  Silently ignores errors
-    /// (the user can still use plain hunk launch).
+    /// Open the file selection overlay for the currently focused commit
+    /// or range.  When a range start is set, loads the union of changed
+    /// files across the whole range (`older..newer`).  Falls back to the
+    /// single-commit file list when the range resolves to the same commit.
     pub fn open_file_selection(&mut self) {
         // Don't re-open if already selecting
         if self.file_selection.is_some() {
             return;
         }
+
+        // Range mode: show union of files changed across the whole range
+        if let Some(start_idx) = self.range_start {
+            let older_idx = start_idx.max(self.selected_index);
+            let newer_idx = start_idx.min(self.selected_index);
+            if older_idx != newer_idx {
+                let older_oid = self.commits[older_idx].oid.clone();
+                let newer_oid = self.commits[newer_idx].oid.clone();
+                match git::load_range_changed_files(
+                    &self.repo_path,
+                    &older_oid,
+                    &newer_oid,
+                ) {
+                    Ok(files) if !files.is_empty() => {
+                        self.file_selection =
+                            Some(FileSelection::new(newer_oid, files));
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+            // Fall through to single-commit list on error or same-commit range
+        }
+
+        // Single-commit mode
         let oid = match self.current_commit_oid() {
             Some(o) => o,
             None => return,
         };
-
         match git::load_changed_files(&self.repo_path, &oid) {
             Ok(files) if !files.is_empty() => {
                 self.file_selection = Some(FileSelection::new(oid, files));
