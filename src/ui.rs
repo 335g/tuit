@@ -205,11 +205,8 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
         .map(|(i, commit)| {
             let is_selected = i == app.selected_index;
             let in_range = has_range && i >= range_lo && i <= range_hi;
-            let is_range_start = app.range_start == Some(i);
             let cursor = if is_selected {
                 "❯"
-            } else if is_range_start {
-                "■"
             } else {
                 " "
             };
