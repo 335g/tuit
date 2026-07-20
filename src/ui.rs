@@ -407,14 +407,23 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     frame.render_widget(list, layout[1]);
 
     // --- Footer ---
-    let count_hint = app.pending_count.map_or(String::new(), |n| format!(" [{}]", n));
-    let footer_text = format!("q: quit | ?: help{}", count_hint);
-    let footer = Paragraph::new(Line::from(Span::styled(
-        footer_text,
-        Style::default().fg(Color::DarkGray),
+    let dim = Style::default().fg(Color::DarkGray);
+    // Left: interactive input (pending count)
+    if let Some(n) = app.pending_count {
+        let left = Paragraph::new(Line::from(Span::styled(
+            format!(" [{}]", n),
+            dim,
+        )))
+        .alignment(Alignment::Left);
+        frame.render_widget(left, layout[2]);
+    }
+    // Right: static command hints
+    let right = Paragraph::new(Line::from(Span::styled(
+        "q: quit | ?: help",
+        dim,
     )))
-    .alignment(Alignment::Center);
-    frame.render_widget(footer, layout[2]);
+    .alignment(Alignment::Right);
+    frame.render_widget(right, layout[2]);
 }
 
 /// Render the commit detail overlay on top of the list.
