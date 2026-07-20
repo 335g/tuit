@@ -62,9 +62,13 @@ An external terminal diff review tool (modem-dev/hunk) that tuit integrates with
 A commit marked in the Commit List by pressing `v`, which acts as the base (older bound) or tip (newer bound) for a range review. When a Range Start is set and the user presses `h`, tuit launches `hunk diff <older_oid>..<newer_oid>` covering all commits between the mark and the cursor, instead of `hunk show <oid>`. Visually indicated by a `■` cursor on the marked row and a highlighted background across the range.
 _Avoid_: Mark, Range marker
 
+**File Selection**:
+An overlay opened by pressing `f` in the Commit List or Commit Detail. Shows a check-list of changed files in the focused commit. The user can toggle individual files with `Space`, select all with `a`, deselect all with `n`, then press `Enter` to launch Hunk with only the selected files. Default: all files selected (unfiltered launch). Cancelled with `Esc`.
+_Avoid_: File picker, Filter files
+
 **Open in Hunk**:
-The action of launching Hunk against a Commit (single) or a Range of Commits (range). Triggered by pressing `h` in the Commit List or the Commit Detail screen.
-- Without a Range Start: runs `hunk show <oid>` against the single focused Commit.
-- With a Range Start set in the Commit List: runs `hunk diff <older_oid>..<newer_oid>`, showing the cumulative diff of all Commits between the mark and the cursor.
-- The Range Start is automatically cleared after a range launch.
+The action of launching Hunk against a Commit (single) or a Range of Commits (range). Triggered by pressing `h` in the Commit List or the Commit Detail screen. May be preceded by File Selection (`f`) to restrict which changed files are forwarded to hunk.
+- Without a Range Start: runs `hunk show <oid>` (single Commit) or `hunk show <oid> -- <selected files>` (filtered).
+- With a Range Start set in the Commit List: runs `hunk diff <older_oid>..<newer_oid>` (range) or `hunk diff <older_oid>..<newer_oid> -- <selected files>` (filtered range).
+- The Range Start is automatically cleared after a range launch. File Selection is consumed after launch.
 _Avoid_: Launch hunk, Review in hunk
