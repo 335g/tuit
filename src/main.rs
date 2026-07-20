@@ -301,7 +301,11 @@ pub fn handle_input(app: &mut App, key: Key) {
                 Key::Char('v') => app.toggle_range_start(),
                 Key::Esc => app.clear_range(),
                 Key::Char('f') => app.open_file_selection(),
-                Key::Char('q') => app.quit(),
+                Key::Char('q') => {
+                    if app.range_start.is_none() {
+                        app.quit();
+                    }
+                },
                 Key::MouseClick(row) => select_commit_at_row(app, row),
                 _ => {}
             }
