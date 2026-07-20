@@ -15,7 +15,7 @@ use crossterm::terminal::{
 use ratatui::Terminal;
 use ratatui::backend::{Backend, CrosstermBackend};
 
-use crate::app::{App, HunkOutcome, Screen};
+use crate::app::{App, HunkLaunch, HunkOutcome, Screen};
 
 /// Simplified input event for the application.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -166,7 +166,7 @@ pub fn run_app<B: Backend>(
     terminal: &mut Terminal<B>,
     events: impl Iterator<Item = Key>,
     repo_path: PathBuf,
-    launcher: &mut dyn FnMut(&Path, &str) -> HunkOutcome,
+    launcher: &mut dyn FnMut(&Path, &HunkLaunch) -> HunkOutcome,
 ) -> Result<()>
 where
     <B as Backend>::Error: Send + Sync + 'static,
@@ -246,6 +246,7 @@ pub fn handle_input(app: &mut App, key: Key) {
             Key::Enter => app.select_commit(),
             Key::Char('c') => copy_commit_hash(app),
             Key::Char('h') => app.open_in_hunk(),
+            Key::Char('v') => app.toggle_range_start(),
             Key::Char('q') => app.quit(),
             Key::MouseClick(row) => select_commit_at_row(app, row),
             _ => {}
@@ -279,11 +280,11 @@ pub fn handle_input(app: &mut App, key: Key) {
 /// can force a full repaint after the TUI resumes.
 fn drain_hunk_launch(
     app: &mut App,
-    launcher: &mut dyn FnMut(&Path, &str) -> HunkOutcome,
+    launcher: &mut dyn FnMut(&Path, &HunkLaunch) -> HunkOutcome,
 ) -> bool {
     match app.pending_hunk_launch.take() {
-        Some(oid) => {
-            let outcome = launcher(&app.repo_path, &oid);
+        Some(launch) => {
+            let outcome = launcher(&app.repo_path, &launch);
             app.on_hunk_finished(outcome);
             true
         }
@@ -291,19 +292,32 @@ fn drain_hunk_launch(
     }
 }
 
-/// Suspend the TUI, run `hunk show <oid>` in the foreground, and resume.
+/// Suspend the TUI, run hunk in the foreground, and resume.
 /// The child process inherits the terminal, so hunk takes over the full
 /// screen until it exits.
-fn launch_hunk(repo_path: &Path, oid: &str) -> HunkOutcome {
+///
+/// Dispatches either `hunk show <oid>` (single commit) or
+/// `hunk diff <older>..<newer>` (range) based on the launch spec.
+fn launch_hunk(repo_path: &Path, launch: &HunkLaunch) -> HunkOutcome {
     let _ = disable_raw_mode();
     let _ = io::stdout().execute(event::DisableMouseCapture);
     let _ = io::stdout().execute(LeaveAlternateScreen);
 
-    let status = Command::new("hunk")
-        .arg("show")
-        .arg(oid)
-        .current_dir(repo_path)
-        .status();
+    let status = match launch {
+        HunkLaunch::ShowCommit(oid) => Command::new("hunk")
+            .arg("show")
+            .arg(oid)
+            .current_dir(repo_path)
+            .status(),
+        HunkLaunch::ShowRange(older, newer) => {
+            let range = format!("{}..{}", older, newer);
+            Command::new("hunk")
+                .arg("diff")
+                .arg(&range)
+                .current_dir(repo_path)
+                .status()
+        }
+    };
 
     let _ = enable_raw_mode();
     let _ = io::stdout().execute(EnterAlternateScreen);
@@ -360,7 +374,7 @@ mod e2e_tests {
 
     use ratatui::backend::TestBackend;
 
-    use super::app::HunkOutcome;
+    use super::app::{HunkLaunch, HunkOutcome};
     use super::*;
 
     /// Helper: create a temporary git repository at `path` with `n` commits.
@@ -426,7 +440,7 @@ mod e2e_tests {
     fn run_with_events_and_launcher(
         repo_path: &Path,
         events: Vec<Key>,
-        launcher: &mut dyn FnMut(&Path, &str) -> HunkOutcome,
+        launcher: &mut dyn FnMut(&Path, &HunkLaunch) -> HunkOutcome,
     ) -> TestBackend {
         // Change to the repo directory before testing.
         let prev_dir = std::env::current_dir().unwrap();
@@ -474,8 +488,10 @@ mod e2e_tests {
 
         let calls = Rc::new(RefCell::new(Vec::new()));
         let calls2 = calls.clone();
-        let mut launcher = move |_path: &Path, oid: &str| {
-            calls2.borrow_mut().push(oid.to_string());
+        let mut launcher = move |_path: &Path, launch: &HunkLaunch| {
+            if let HunkLaunch::ShowCommit(oid) = launch {
+                calls2.borrow_mut().push(oid.clone());
+            }
             HunkOutcome::Success
         };
 
@@ -502,8 +518,10 @@ mod e2e_tests {
 
         let calls = Rc::new(RefCell::new(Vec::new()));
         let calls2 = calls.clone();
-        let mut launcher = move |_path: &Path, oid: &str| {
-            calls2.borrow_mut().push(oid.to_string());
+        let mut launcher = move |_path: &Path, launch: &HunkLaunch| {
+            if let HunkLaunch::ShowCommit(oid) = launch {
+                calls2.borrow_mut().push(oid.clone());
+            }
             HunkOutcome::Success
         };
 
@@ -531,7 +549,7 @@ mod e2e_tests {
         let tmp = std::env::temp_dir().join("tuit-e2e-hunk-failure");
         init_repo(&tmp, 1);
 
-        let mut launcher = |_path: &Path, _oid: &str| {
+        let mut launcher = |_path: &Path, _launch: &HunkLaunch| {
             HunkOutcome::Failed("Failed to launch hunk: command not found".to_string())
         };
 
@@ -553,7 +571,7 @@ mod e2e_tests {
         let tmp = std::env::temp_dir().join("tuit-e2e-hunk-success");
         init_repo(&tmp, 1);
 
-        let mut launcher = |_path: &Path, _oid: &str| HunkOutcome::Success;
+        let mut launcher = |_path: &Path, _launch: &HunkLaunch| HunkOutcome::Success;
 
         let backend = run_with_events_and_launcher(
             &tmp,
@@ -576,8 +594,10 @@ mod e2e_tests {
 
         let calls = Rc::new(RefCell::new(Vec::new()));
         let calls2 = calls.clone();
-        let mut launcher = move |_path: &Path, oid: &str| {
-            calls2.borrow_mut().push(oid.to_string());
+        let mut launcher = move |_path: &Path, launch: &HunkLaunch| {
+            if let HunkLaunch::ShowCommit(oid) = launch {
+                calls2.borrow_mut().push(oid.clone());
+            }
             HunkOutcome::Success
         };
 
@@ -591,6 +611,274 @@ mod e2e_tests {
             calls.borrow().is_empty(),
             "h on a screen without a focused commit must not launch hunk",
         );
+    }
+
+    // ── Range-based hunk launch tests ───────────────────────────
+
+    #[test]
+    fn v_sets_range_start_on_current_commit() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-v-set-range");
+        init_repo(&tmp, 3);
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg, tmp.clone());
+        app.load_commits();
+
+        assert_eq!(app.selected_index, 0);
+        assert!(app.range_start.is_none());
+
+        super::handle_input(&mut app, Key::Char('v'));
+        assert_eq!(app.range_start, Some(0));
+
+        std::env::set_current_dir(prev_dir).unwrap();
+    }
+
+    #[test]
+    fn v_on_same_commit_clears_range_start() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-v-clear-range");
+        init_repo(&tmp, 3);
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg, tmp.clone());
+        app.load_commits();
+
+        // Mark
+        super::handle_input(&mut app, Key::Char('v'));
+        assert_eq!(app.range_start, Some(0));
+
+        // Toggle off
+        super::handle_input(&mut app, Key::Char('v'));
+        assert_eq!(app.range_start, None);
+
+        std::env::set_current_dir(prev_dir).unwrap();
+    }
+
+    #[test]
+    fn v_moves_range_to_new_commit() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-v-move-range");
+        init_repo(&tmp, 3);
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg, tmp.clone());
+        app.load_commits();
+
+        // Mark first commit
+        super::handle_input(&mut app, Key::Char('v'));
+        assert_eq!(app.range_start, Some(0));
+
+        // Move to index 1 and mark there (should move the mark)
+        super::handle_input(&mut app, Key::Char('j'));
+        super::handle_input(&mut app, Key::Char('v'));
+        assert_eq!(app.range_start, Some(1));
+
+        std::env::set_current_dir(prev_dir).unwrap();
+    }
+
+    #[test]
+    fn h_with_range_launches_show_range() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-h-range");
+        init_repo(&tmp, 3);
+
+        let expected_older = rev_parse(&tmp, "HEAD~1");
+        let expected_newer = rev_parse(&tmp, "HEAD");
+
+        let launches = Rc::new(RefCell::new(Vec::new()));
+        let launches2 = launches.clone();
+        let mut launcher = move |_path: &Path, launch: &HunkLaunch| {
+            launches2.borrow_mut().push(launch.clone());
+            HunkOutcome::Success
+        };
+
+        // Start at HEAD (index 0), press v to mark, j to move to HEAD~1, h to launch range
+        let _backend = run_with_events_and_launcher(
+            &tmp,
+            vec![Key::Char('v'), Key::Char('j'), Key::Char('h'), Key::Char('q')],
+            &mut launcher,
+        );
+
+        let calls = launches.borrow();
+        assert_eq!(calls.len(), 1, "should launch hunk exactly once");
+        match &calls[0] {
+            HunkLaunch::ShowRange(older, newer) => {
+                assert_eq!(older, &expected_older, "older commit OID should match HEAD~1");
+                assert_eq!(newer, &expected_newer, "newer commit OID should match HEAD");
+            }
+            other => panic!("expected ShowRange, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn h_without_range_launches_show_commit() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-h-no-range");
+        init_repo(&tmp, 2);
+
+        let expected_oid = rev_parse(&tmp, "HEAD");
+
+        let launches = Rc::new(RefCell::new(Vec::new()));
+        let launches2 = launches.clone();
+        let mut launcher = move |_path: &Path, launch: &HunkLaunch| {
+            launches2.borrow_mut().push(launch.clone());
+            HunkOutcome::Success
+        };
+
+        let _backend = run_with_events_and_launcher(
+            &tmp,
+            vec![Key::Char('h'), Key::Char('q')],
+            &mut launcher,
+        );
+
+        let calls = launches.borrow();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0],
+            HunkLaunch::ShowCommit(expected_oid),
+            "without range, h should launch ShowCommit"
+        );
+    }
+
+    #[test]
+    fn range_is_cleared_after_h_launch() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-range-cleared");
+        init_repo(&tmp, 3);
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg, tmp.clone());
+        app.load_commits();
+
+        super::handle_input(&mut app, Key::Char('v'));
+        assert_eq!(app.range_start, Some(0));
+
+        app.open_in_hunk();
+        // range_start should be consumed (taken by open_in_hunk)
+        assert!(app.range_start.is_none(), "range_start should be cleared after open_in_hunk");
+        // pending_hunk_launch should be set
+        assert!(app.pending_hunk_launch.is_some(), "pending_hunk_launch should be set");
+
+        std::env::set_current_dir(prev_dir).unwrap();
+    }
+
+    #[test]
+    fn reload_clears_range_start() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-reload-clears-range");
+        init_repo(&tmp, 3);
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg, tmp.clone());
+        app.load_commits();
+
+        super::handle_input(&mut app, Key::Char('v'));
+        assert_eq!(app.range_start, Some(0));
+
+        app.reload();
+        assert!(app.range_start.is_none(), "range_start should be cleared on reload");
+
+        std::env::set_current_dir(prev_dir).unwrap();
+    }
+
+    #[test]
+    fn v_in_detail_does_nothing() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-v-detail");
+        init_repo(&tmp, 3);
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg, tmp.clone());
+        app.load_commits();
+        app.select_commit();
+        assert_eq!(app.screen, Screen::Detail);
+
+        super::handle_input(&mut app, Key::Char('v'));
+        // v should be ignored in Detail — range_start stays None
+        assert!(app.range_start.is_none(), "v in Detail must not set range_start");
+
+        std::env::set_current_dir(prev_dir).unwrap();
+    }
+
+    #[test]
+    fn h_in_detail_ignores_range_set_in_list() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-h-detail-ignores-range");
+        init_repo(&tmp, 3);
+
+        let expected_oid = rev_parse(&tmp, "HEAD");
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg, tmp.clone());
+        app.load_commits();
+
+        // Set range in list
+        super::handle_input(&mut app, Key::Char('v'));
+        assert_eq!(app.range_start, Some(0));
+
+        // Open detail
+        app.select_commit();
+        assert_eq!(app.screen, Screen::Detail);
+
+        // h in detail should still launch ShowCommit (range_start preserved but not consumed)
+        app.open_in_hunk();
+        assert_eq!(
+            app.pending_hunk_launch,
+            Some(HunkLaunch::ShowCommit(expected_oid)),
+            "h in Detail should launch ShowCommit even if range_start is set"
+        );
+        // range_start should still be set for when user returns to list
+        assert_eq!(app.range_start, Some(0));
+
+        std::env::set_current_dir(prev_dir).unwrap();
     }
 
     #[test]
@@ -1133,7 +1421,7 @@ mod e2e_tests {
             &mut terminal,
             vec![Key::Char('q')].into_iter(),
             tmp.clone(),
-            &mut |_, _| HunkOutcome::Success,
+            &mut |_, _: &HunkLaunch| HunkOutcome::Success,
         );
         let content = buf_to_string(terminal.backend().buffer());
 
