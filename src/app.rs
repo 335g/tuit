@@ -103,6 +103,9 @@ pub struct App {
     pub range_start: Option<usize>,
     /// Active file selection overlay, if any.
     pub file_selection: Option<FileSelection>,
+    /// Numeric prefix accumulated for movement commands (e.g. `10` then `j`).
+    /// Reset to `None` after every non-digit action.
+    pub pending_count: Option<usize>,
 }
 
 impl App {
@@ -133,6 +136,7 @@ impl App {
             notification_timeout_ms: config.notification_timeout_ms,
             range_start: None,
             file_selection: None,
+            pending_count: None,
             // Initialise to the past so the first poll always runs.
             last_poll_time: Instant::now() - Duration::from_millis(config.poll_interval_ms + 1),
             repo_path,
