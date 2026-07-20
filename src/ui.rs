@@ -408,15 +408,37 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
 
     // --- Footer ---
     let dim = Style::default().fg(Color::DarkGray);
-    // Left: interactive input (pending count)
+    let cursor_fg = hex_color(&app.colors.cursor_fg);
+
+    // Left: mode indicator + pending count
+    let (mode_label, mode_bg_hex) = match &app.screen {
+        Screen::List => {
+            if app.range_start.is_some() {
+                (" SEL ", "#fab387")
+            } else {
+                (" NORM ", "#89b4fa")
+            }
+        }
+        Screen::Detail => (" DETAIL ", "#a6e3a1"),
+        Screen::Alert(_) => (" ALERT ", "#f38ba8"),
+        Screen::Error(_) => (" ERROR ", "#f38ba8"),
+        Screen::Loading => (" LOAD ", "#6c7086"),
+    };
+    let mut left_spans: Vec<Span> = vec![
+        Span::styled(
+            mode_label,
+            Style::default()
+                .bg(hex_color(mode_bg_hex))
+                .fg(cursor_fg),
+        ),
+    ];
     if let Some(n) = app.pending_count {
-        let left = Paragraph::new(Line::from(Span::styled(
-            format!(" [{}]", n),
-            dim,
-        )))
-        .alignment(Alignment::Left);
-        frame.render_widget(left, layout[2]);
+        left_spans.push(Span::styled(format!(" [{}]", n), dim));
     }
+    let left = Paragraph::new(Line::from(left_spans))
+        .alignment(Alignment::Left);
+    frame.render_widget(left, layout[2]);
+
     // Right: static command hints
     let right = Paragraph::new(Line::from(Span::styled(
         "q: quit | ?: help",
