@@ -407,6 +407,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     frame.render_widget(list, layout[1]);
 
     // --- Footer ---
+    let count_hint = app.pending_count.map_or(String::new(), |n| format!(" [{}]", n));
     let range_hint = if has_range {
         format!(
             " range: {}..{} ",
@@ -417,9 +418,9 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
         String::new()
     };
     let footer_text = if has_range {
-        format!(" v/Esc: clear range | f: select files | h: review range | Enter: detail | q: quit {}", range_hint)
+        format!(" v/Esc: clear range | f: select files | h: review range | Enter: detail | q: quit {}{}", range_hint, count_hint)
     } else {
-        " c: copy | v: mark range | f: select files | h: hunk | r: reload | Enter: detail | q: quit ".to_string()
+        format!(" c: copy | v: mark range | f: select files | h: hunk | r: reload | Enter: detail | q: quit {}", count_hint)
     };
     let footer = Paragraph::new(Line::from(Span::styled(
         footer_text,
