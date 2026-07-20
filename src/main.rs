@@ -273,20 +273,38 @@ pub fn handle_input(app: &mut App, key: Key) {
 
 
     match &app.screen {
-        Screen::List => match key {
-            Key::Up | Key::Char('k') => app.navigate_up(),
-            Key::Down | Key::Char('j') => app.navigate_down(),
-            Key::Ctrl('f') | Key::PageDown => app.navigate_page_down(),
-            Key::Ctrl('b') | Key::PageUp => app.navigate_page_up(),
-            Key::Enter => app.select_commit(),
-            Key::Char('c') => copy_commit_hash(app),
-            Key::Char('h') => app.open_in_hunk(),
-            Key::Char('v') => app.toggle_range_start(),
-            Key::Esc => app.clear_range(),
-            Key::Char('f') => app.open_file_selection(),
-            Key::Char('q') => app.quit(),
-            Key::MouseClick(row) => select_commit_at_row(app, row),
-            _ => {}
+        Screen::List => {
+            // Numeric prefix for j/k movement
+            if let Key::Char(d) = key {
+                if d.is_ascii_digit() {
+                    let digit = d.to_digit(10).unwrap() as usize;
+                    app.pending_count =
+                        Some(app.pending_count.unwrap_or(0) * 10 + digit);
+                    return;
+                }
+            }
+            let count = app.pending_count.take();
+            match key {
+                Key::Up | Key::Char('k') => {
+                    let n = count.unwrap_or(1);
+                    for _ in 0..n { app.navigate_up(); }
+                }
+                Key::Down | Key::Char('j') => {
+                    let n = count.unwrap_or(1);
+                    for _ in 0..n { app.navigate_down(); }
+                }
+                Key::Ctrl('f') | Key::PageDown => app.navigate_page_down(),
+                Key::Ctrl('b') | Key::PageUp => app.navigate_page_up(),
+                Key::Enter => app.select_commit(),
+                Key::Char('c') => copy_commit_hash(app),
+                Key::Char('h') => app.open_in_hunk(),
+                Key::Char('v') => app.toggle_range_start(),
+                Key::Esc => app.clear_range(),
+                Key::Char('f') => app.open_file_selection(),
+                Key::Char('q') => app.quit(),
+                Key::MouseClick(row) => select_commit_at_row(app, row),
+                _ => {}
+            }
         },
         Screen::Detail => match key {
             Key::Esc => app.close_detail(),
