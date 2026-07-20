@@ -58,6 +58,13 @@ The development workflow the Hunk integration serves: a coding agent's changes a
 **Hunk**:
 An external terminal diff review tool (modem-dev/hunk) that tuit integrates with. Provides multi-file review with inline comments, used as the feedback channel in the Agent Review Loop.
 
+**Range Start**:
+A commit marked in the Commit List by pressing `v`, which acts as the base (older bound) or tip (newer bound) for a range review. When a Range Start is set and the user presses `h`, tuit launches `hunk diff <older_oid>..<newer_oid>` covering all commits between the mark and the cursor, instead of `hunk show <oid>`. Visually indicated by a `■` cursor on the marked row and a highlighted background across the range.
+_Avoid_: Mark, Range marker
+
 **Open in Hunk**:
-The action of launching Hunk against the currently selected Commit, passing its OID as the review target, triggered by pressing `h` in either the Commit List or the Commit Detail screen. The unit of review is always a single Commit, matching the granularity produced by the Agent Review Loop's auto-commits.
+The action of launching Hunk against a Commit (single) or a Range of Commits (range). Triggered by pressing `h` in the Commit List or the Commit Detail screen.
+- Without a Range Start: runs `hunk show <oid>` against the single focused Commit.
+- With a Range Start set in the Commit List: runs `hunk diff <older_oid>..<newer_oid>`, showing the cumulative diff of all Commits between the mark and the cursor.
+- The Range Start is automatically cleared after a range launch.
 _Avoid_: Launch hunk, Review in hunk
