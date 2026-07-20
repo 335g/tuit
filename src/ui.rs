@@ -104,13 +104,13 @@ pub fn render(frame: &mut Frame, app: &App) {
             render_commit_list(frame, app, true);
             render_detail_overlay(frame, app);
             // Re-render footer on top of the dimming layer.
-            render_footer(frame, app, footer_area);
+            render_footer(frame, app, footer_area, true);
         }
         Screen::Error(msg) => render_error(frame, msg),
         Screen::Alert(kind) => {
             render_commit_list(frame, app, true);
             render_alert_overlay(frame, app, kind);
-            render_footer(frame, app, footer_area);
+            render_footer(frame, app, footer_area, true);
         }
     }
 
@@ -418,34 +418,39 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     frame.render_widget(list, layout[1]);
 
     // --- Footer ---
-    render_footer(frame, app, layout[2]);
+    render_footer(frame, app, layout[2], grayed_out);
 }
 
 /// Render the footer bar: mode indicator on the left, command hints on the right.
-fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
+fn render_footer(frame: &mut Frame, app: &App, area: Rect, grayed_out: bool) {
     let dim = Style::default().fg(Color::DarkGray);
     let cursor_fg = hex_color(&app.colors.cursor_fg);
 
     // Left: mode indicator + pending count
-    let (mode_label, mode_bg_hex) = match &app.screen {
-        Screen::List => {
-            if app.range_start.is_some() {
-                (" SEL ", "#fab387")
-            } else {
-                (" NORM ", "#89b4fa")
+    let (mode_label, mode_bg_hex, mode_fg) = if grayed_out {
+        (" NORM ", "#6c7086", Color::Black)
+    } else {
+        let (label, bg) = match &app.screen {
+            Screen::List => {
+                if app.range_start.is_some() {
+                    (" SEL ", "#fab387")
+                } else {
+                    (" NORM ", "#89b4fa")
+                }
             }
-        }
-        Screen::Detail => (" DETAIL ", "#a6e3a1"),
-        Screen::Alert(_) => (" ALERT ", "#f38ba8"),
-        Screen::Error(_) => (" ERROR ", "#f38ba8"),
-        Screen::Loading => (" LOAD ", "#6c7086"),
+            Screen::Detail => (" DETAIL ", "#a6e3a1"),
+            Screen::Alert(_) => (" ALERT ", "#f38ba8"),
+            Screen::Error(_) => (" ERROR ", "#f38ba8"),
+            Screen::Loading => (" LOAD ", "#6c7086"),
+        };
+        (label, bg, cursor_fg)
     };
     let mut left_spans: Vec<Span> = vec![
         Span::styled(
             mode_label,
             Style::default()
                 .bg(hex_color(mode_bg_hex))
-                .fg(cursor_fg),
+                .fg(mode_fg),
         ),
     ];
     if let Some(n) = app.pending_count {
