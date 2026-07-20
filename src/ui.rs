@@ -420,7 +420,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
         String::new()
     };
     let footer_text = if has_range {
-        format!(" v: clear range | f: select files | h: review range | Enter: detail | q: quit {}", range_hint)
+        format!(" v/Esc: clear range | f: select files | h: review range | Enter: detail | q: quit {}", range_hint)
     } else {
         " c: copy | v: mark range | f: select files | h: hunk | r: reload | Enter: detail | q: quit ".to_string()
     };
