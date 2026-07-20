@@ -45,6 +45,16 @@ pub enum HunkOutcome {
     Failed(String),
 }
 
+/// Specification for a pending Hunk launch.
+/// The event loop reads this and dispatches the appropriate hunk command.
+#[derive(Clone, Debug, PartialEq)]
+pub enum HunkLaunch {
+    /// Launch `hunk show <oid>` — review a single commit.
+    ShowCommit(String),
+    /// Launch `hunk diff <older>..<newer>` — review a range of commits.
+    ShowRange(String, String),
+}
+
 /// Central application state.
 pub struct App {
     pub screen: Screen,
@@ -79,9 +89,13 @@ pub struct App {
     pub last_poll_time: Instant,
     /// Filesystem path of the Git repository being viewed.
     pub repo_path: PathBuf,
-    /// Pending Open in Hunk launch: the OID to review, set by `open_in_hunk`
-    /// and consumed by the event loop which performs the actual launch.
-    pub pending_hunk_launch: Option<String>,
+    /// Pending Open in Hunk launch, set by `open_in_hunk` and consumed by
+    /// the event loop which performs the actual launch.
+    pub pending_hunk_launch: Option<HunkLaunch>,
+    /// When set, marks the commit at this index as the start of a range.
+    /// Pressing `h` while a range start is set launches
+    /// `hunk diff <older>..<newer>` instead of `hunk show <oid>`.
+    pub range_start: Option<usize>,
 }
 
 impl App {
@@ -110,6 +124,7 @@ impl App {
             current_head_oid: None,
             poll_interval_ms: config.poll_interval_ms,
             notification_timeout_ms: config.notification_timeout_ms,
+            range_start: None,
             // Initialise to the past so the first poll always runs.
             last_poll_time: Instant::now() - Duration::from_millis(config.poll_interval_ms + 1),
             repo_path,
@@ -362,6 +377,7 @@ impl App {
     /// Dismiss the alert and return to the commit list.
     pub fn dismiss_alert(&mut self) {
         if matches!(self.screen, Screen::Alert(_)) {
+            self.clear_range();
             self.screen = Screen::List;
             self.selected_commit = None;
             self.detail_scroll.set(0);
@@ -425,14 +441,48 @@ impl App {
         self.should_quit = true;
     }
 
-    /// Record an Open in Hunk launch for the currently focused commit.
+    /// Record an Open in Hunk launch for the currently focused commit or range.
     ///
     /// Only records the intent; the event loop performs the actual launch
-    /// (suspend the TUI, run `hunk show <oid>`, resume) and reports the
-    /// result back via `on_hunk_finished`. Does nothing on screens
-    /// without a focused commit.
+    /// (suspend the TUI, run hunk, resume) and reports the result back via
+    /// `on_hunk_finished`. Does nothing on screens without a focused commit.
+    ///
+    /// When a range start is set (List view only), launches
+    /// `hunk diff <older>..<newer>` covering all commits between the mark
+    /// and the current selection.  If mark and selection are the same commit
+    /// it falls back to a single-commit show.
     pub fn open_in_hunk(&mut self) {
-        self.pending_hunk_launch = self.current_commit_oid();
+        match &self.screen {
+            Screen::List => {
+                if let Some(oid) = self.current_commit_oid() {
+                    if let Some(start_idx) = self.range_start.take() {
+                        let older_idx = start_idx.max(self.selected_index);
+                        let newer_idx = start_idx.min(self.selected_index);
+
+                        if older_idx == newer_idx {
+                            // Same commit → fall back to single
+                            self.pending_hunk_launch =
+                                Some(HunkLaunch::ShowCommit(oid));
+                        } else {
+                            let older_oid = self.commits[older_idx].oid.clone();
+                            let newer_oid = self.commits[newer_idx].oid.clone();
+                            self.pending_hunk_launch =
+                                Some(HunkLaunch::ShowRange(older_oid, newer_oid));
+                        }
+                    } else {
+                        self.pending_hunk_launch =
+                            Some(HunkLaunch::ShowCommit(oid));
+                    }
+                }
+            }
+            Screen::Detail => {
+                if let Some(oid) = self.current_commit_oid() {
+                    self.pending_hunk_launch =
+                        Some(HunkLaunch::ShowCommit(oid));
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Apply the outcome of a finished Open in Hunk launch.
@@ -448,6 +498,8 @@ impl App {
     /// Re-opens the repository, re-fetches the branch name and commits,
     /// closes the detail view, and resets the selection to the top.
     pub fn reload(&mut self) {
+        self.clear_range();
+
         let repo = match git::open_repo(&self.repo_path) {
             Ok(r) => r,
             Err(e) => {
@@ -494,5 +546,27 @@ impl App {
         if matches!(self.screen, Screen::Error(_)) {
             self.quit();
         }
+    }
+
+    /// Toggle the range start mark at the current selection.
+    ///
+    /// - If the current commit is already marked → unmark.
+    /// - Otherwise → mark the current commit (moves the mark if one
+    ///   was already set elsewhere).
+    /// Does nothing outside of List view.
+    pub fn toggle_range_start(&mut self) {
+        if self.screen != Screen::List {
+            return;
+        }
+        if self.range_start == Some(self.selected_index) {
+            self.range_start = None;
+        } else {
+            self.range_start = Some(self.selected_index);
+        }
+    }
+
+    /// Clear the range start mark, if any.
+    pub fn clear_range(&mut self) {
+        self.range_start = None;
     }
 }
