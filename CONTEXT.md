@@ -63,7 +63,10 @@ A commit marked in the Commit List by pressing `v`, which acts as the base (olde
 _Avoid_: Mark, Range marker
 
 **File Selection**:
-An overlay opened by pressing `f` in the Commit List or Commit Detail. Shows a check-list of changed files in the focused commit. The user can toggle individual files with `Space`, select all with `a`, deselect all with `n`, then press `Enter` to launch Hunk with only the selected files. Default: all files selected (unfiltered launch). Cancelled with `Esc`.
+An overlay opened by pressing `f` in the Commit List or Commit Detail. Shows a check-list of changed files.
+- **Single-commit mode** (no range start): shows files changed in the focused Commit.
+- **Range mode** (range start set): shows the **union** of files changed across the range (`older..newer`), computed as `git diff --name-only <older>..<newer>`.
+The user can toggle individual files with `Space`, select all with `a`, deselect all with `n`, then press `Enter` to launch Hunk with only the selected files. Default: all files selected (unfiltered launch). Cancelled with `Esc`.
 _Avoid_: File picker, Filter files
 
 **Open in Hunk**:
