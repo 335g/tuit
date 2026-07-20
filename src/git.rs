@@ -118,6 +118,64 @@ pub fn load_commits_from(repo: &gix::Repository) -> Result<Vec<Commit>> {
     Ok(commits)
 }
 
+/// Load the list of files changed in a commit identified by its full OID hex string.
+pub fn load_changed_files(path: &Path, oid_hex: &str) -> Result<Vec<String>> {
+    let repo = open_repo(path)?;
+    let oid: gix::hash::ObjectId = oid_hex.parse().context("Invalid OID format")?;
+    let commit_obj = repo.find_commit(oid).context("Commit not found")?;
+
+    let tree = repo
+        .find_tree(commit_obj.tree_id()?)
+        .context("Failed to find commit tree")?;
+    let parent_tree = commit_obj.parent_ids().next().and_then(|pid| {
+        repo.find_commit(pid.detach())
+            .ok()
+            .and_then(|pc| pc.tree_id().ok())
+            .and_then(|tid| repo.find_tree(tid.detach()).ok())
+    });
+
+    let mut opts = gix::diff::Options::default();
+    opts.track_path();
+    opts.track_rewrites(None);
+
+    let changes: Vec<gix::object::tree::diff::ChangeDetached> = repo
+        .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), opts)
+        .context("Failed to diff trees")?;
+
+    // Filter: only blob (regular file) changes — skip tree (directory) entries.
+    use gix::object::tree::EntryKind;
+
+    let is_blob = |mode: gix::object::tree::EntryMode| -> bool {
+        let kind: EntryKind = mode.into();
+        matches!(kind, EntryKind::Blob | EntryKind::BlobExecutable)
+    };
+
+    let mut files: Vec<String> = changes
+        .iter()
+        .filter_map(|change| match change {
+            gix::object::tree::diff::ChangeDetached::Addition {
+                entry_mode,
+                location,
+                ..
+            }
+            | gix::object::tree::diff::ChangeDetached::Deletion {
+                entry_mode,
+                location,
+                ..
+            } if is_blob(*entry_mode) => Some(location.to_string()),
+            gix::object::tree::diff::ChangeDetached::Modification {
+                entry_mode,
+                location,
+                ..
+            } if is_blob(*entry_mode) => Some(location.to_string()),
+            _ => None,
+        })
+        .collect();
+    files.sort();
+    files.dedup();
+    Ok(files)
+}
+
 /// Load the full commit body and diff for a commit identified by its full OID hex string.
 ///
 /// Returns `(body, diff_text)`.
