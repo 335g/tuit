@@ -1763,18 +1763,21 @@ mod e2e_tests {
     #[test]
     fn range_and_file_selection_launches_show_range_filtered() {
         let tmp = std::env::temp_dir().join("tuit-e2e-range-filtered");
-        init_repo_with_files(&tmp, &["a.rs", "b.rs"]);
+        // Build: commit 1 (HEAD~1) adds a.rs; commit 2 (HEAD) modifies
+        // a.rs AND adds b.rs.  Range HEAD~1..HEAD shows both files changed.
+        init_repo_with_files(&tmp, &["a.rs"]);
 
-        // We need at least 2 commits.  Make an extra commit that
-        // only touches a.rs, so the range has changed files too.
+        // HEAD: modify a.rs and add b.rs (both files change across the range)
         let a_rs = tmp.join("a.rs");
-        std::fs::write(&a_rs, "content of a.rs v2").unwrap();
+        std::fs::write(&a_rs, "a v2").unwrap();
+        let b_rs = tmp.join("b.rs");
+        std::fs::write(&b_rs, "b content").unwrap();
         Command::new("git")
-            .args(["-C", &tmp.to_string_lossy(), "add", &a_rs.to_string_lossy()])
+            .args(["-C", &tmp.to_string_lossy(), "add", &a_rs.to_string_lossy(), &b_rs.to_string_lossy()])
             .status()
             .unwrap();
         Command::new("git")
-            .args(["-C", &tmp.to_string_lossy(), "commit", "-m", "modify a.rs"])
+            .args(["-C", &tmp.to_string_lossy(), "commit", "-m", "modify a, add b"])
             .env("GIT_AUTHOR_NAME", "Test")
             .env("GIT_AUTHOR_EMAIL", "test@test")
             .env("GIT_COMMITTER_NAME", "Test")
@@ -1792,18 +1795,21 @@ mod e2e_tests {
             HunkOutcome::Success
         };
 
-        // On HEAD (index 0): press v (mark range start), then f
-        // to open file selection, Space to deselect the top file,
-        // j to move cursor, Enter to launch filtered range.
+        // On HEAD (index 0): press v (mark range start),
+        // then j to move to index 1 (older), f to open file selection,
+        // Space to deselect a.rs, Enter to launch range filtered with
+        // just b.rs.
+        //
+        // load_range_changed_files shows files changed across the range:
+        //   a.rs (modified) and b.rs (added).
         let _backend = run_with_events_and_launcher(
             &tmp,
             vec![
                 Key::Char('v'),
-                Key::Char('j'),  // move to index 1 (older commit)
-                Key::Char('f'),  // open file selection for commit at cursor
-                Key::Char(' '),  // deselect a.rs (first file, sorted)
-                Key::Char('j'),  // cursor to b.rs
-                Key::Enter,      // launch range filtered with just b.rs
+                Key::Char('j'),  // move to index 1 (older = HEAD~1)
+                Key::Char('f'),  // open file selection (range files)
+                Key::Char(' '),  // deselect a.rs (cursor at 0)
+                Key::Enter,      // confirm with b.rs only
                 Key::Char('q'),
             ],
             &mut launcher,
