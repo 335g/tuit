@@ -223,6 +223,41 @@ pub fn handle_input(app: &mut App, key: Key) {
         return;
     }
 
+    // File selection overlay intercepts its own keys.
+    if app.file_selection.is_some() {
+        match key {
+            Key::Up | Key::Char('k') => {
+                if let Some(ref mut fs) = app.file_selection {
+                    fs.navigate_up();
+                }
+            }
+            Key::Down | Key::Char('j') => {
+                if let Some(ref mut fs) = app.file_selection {
+                    fs.navigate_down();
+                }
+            }
+            Key::Char(' ') => {
+                if let Some(ref mut fs) = app.file_selection {
+                    fs.toggle_current();
+                }
+            }
+            Key::Char('a') => {
+                if let Some(ref mut fs) = app.file_selection {
+                    fs.select_all();
+                }
+            }
+            Key::Char('n') => {
+                if let Some(ref mut fs) = app.file_selection {
+                    fs.select_none();
+                }
+            }
+            Key::Enter => app.confirm_file_selection(),
+            Key::Esc => app.close_file_selection(),
+            _ => {}
+        }
+        return;
+    }
+
     // Global: ? opens help from any screen.
     if key == Key::Char('?') {
         app.show_help = true;
@@ -247,6 +282,7 @@ pub fn handle_input(app: &mut App, key: Key) {
             Key::Char('c') => copy_commit_hash(app),
             Key::Char('h') => app.open_in_hunk(),
             Key::Char('v') => app.toggle_range_start(),
+            Key::Char('f') => app.open_file_selection(),
             Key::Char('q') => app.quit(),
             Key::MouseClick(row) => select_commit_at_row(app, row),
             _ => {}
@@ -259,6 +295,7 @@ pub fn handle_input(app: &mut App, key: Key) {
             Key::Ctrl('b') | Key::PageUp => app.scroll_detail_page_up(),
             Key::Char('c') => copy_commit_hash(app),
             Key::Char('h') => app.open_in_hunk(),
+            Key::Char('f') => app.open_file_selection(),
             _ => {}
         },
         Screen::Error(_) => match key {
@@ -309,6 +346,14 @@ fn launch_hunk(repo_path: &Path, launch: &HunkLaunch) -> HunkOutcome {
             .arg(oid)
             .current_dir(repo_path)
             .status(),
+        HunkLaunch::ShowCommitFiltered(oid, paths) => {
+            let mut cmd = Command::new("hunk");
+            cmd.arg("show").arg(oid).arg("--");
+            for p in paths {
+                cmd.arg(p);
+            }
+            cmd.current_dir(repo_path).status()
+        }
         HunkLaunch::ShowRange(older, newer) => {
             let range = format!("{}..{}", older, newer);
             Command::new("hunk")
@@ -316,6 +361,15 @@ fn launch_hunk(repo_path: &Path, launch: &HunkLaunch) -> HunkOutcome {
                 .arg(&range)
                 .current_dir(repo_path)
                 .status()
+        }
+        HunkLaunch::ShowRangeFiltered(older, newer, paths) => {
+            let range = format!("{}..{}", older, newer);
+            let mut cmd = Command::new("hunk");
+            cmd.arg("diff").arg(&range).arg("--");
+            for p in paths {
+                cmd.arg(p);
+            }
+            cmd.current_dir(repo_path).status()
         }
     };
 
@@ -1491,5 +1545,279 @@ mod e2e_tests {
         );
 
         std::env::set_current_dir(prev_dir).unwrap();
+    }
+
+    // ── File selection tests ────────────────────────────────────
+
+    #[test]
+    fn f_opens_file_selection_overlay() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-f-opens");
+        init_repo(&tmp, 3);
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg, tmp.clone());
+        app.load_commits();
+
+        assert!(app.file_selection.is_none());
+        super::handle_input(&mut app, Key::Char('f'));
+        assert!(
+            app.file_selection.is_some(),
+            "pressing f should open file selection"
+        );
+        // Default: all files selected
+        assert_eq!(
+            app.file_selection.as_ref().unwrap().selected.len(),
+            app.file_selection.as_ref().unwrap().files.len(),
+        );
+
+        std::env::set_current_dir(prev_dir).unwrap();
+    }
+
+    #[test]
+    fn f_twice_does_not_reopen() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-f-twice");
+        init_repo(&tmp, 3);
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg, tmp.clone());
+        app.load_commits();
+
+        super::handle_input(&mut app, Key::Char('f'));
+        let commit_oid = app.file_selection.as_ref().unwrap().commit_oid.clone();
+        super::handle_input(&mut app, Key::Char('f'));
+        // Second f should be a no-op (same instance preserved)
+        assert_eq!(
+            app.file_selection.as_ref().unwrap().commit_oid,
+            commit_oid,
+            "second f must not re-open file selection"
+        );
+
+        std::env::set_current_dir(prev_dir).unwrap();
+    }
+
+    #[test]
+    fn esc_closes_file_selection() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-f-esc");
+        init_repo(&tmp, 3);
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&tmp).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg, tmp.clone());
+        app.load_commits();
+
+        super::handle_input(&mut app, Key::Char('f'));
+        assert!(app.file_selection.is_some());
+        super::handle_input(&mut app, Key::Esc);
+        assert!(
+            app.file_selection.is_none(),
+            "Esc should close file selection"
+        );
+
+        std::env::set_current_dir(prev_dir).unwrap();
+    }
+
+    #[test]
+    fn f_then_enter_with_all_sel_launches_show_commit() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-f-enter-all");
+        init_repo(&tmp, 3);
+
+        let expected_oid = rev_parse(&tmp, "HEAD");
+
+        let launches = Rc::new(RefCell::new(Vec::new()));
+        let launches2 = launches.clone();
+        let mut launcher = move |_path: &Path, launch: &HunkLaunch| {
+            launches2.borrow_mut().push(launch.clone());
+            HunkOutcome::Success
+        };
+
+        let _backend = run_with_events_and_launcher(
+            &tmp,
+            vec![Key::Char('f'), Key::Enter, Key::Char('q')],
+            &mut launcher,
+        );
+
+        let calls = launches.borrow();
+        assert_eq!(calls.len(), 1, "should launch hunk exactly once");
+        // All files selected → unfiltered ShowCommit
+        assert_eq!(
+            calls[0],
+            HunkLaunch::ShowCommit(expected_oid),
+            "all-selected should produce ShowCommit"
+        );
+    }
+
+    /// Create a repo whose HEAD commit contains exactly the given files.
+    fn init_repo_with_files(path: &Path, files: &[&str]) {
+        let _ = std::fs::remove_dir_all(path);
+        std::fs::create_dir_all(path).unwrap();
+
+        Command::new("git")
+            .args(["init", "--initial-branch=main"])
+            .arg(path)
+            .status()
+            .unwrap();
+
+        // Create an initial commit so HEAD exists
+        let init = path.join(".gitkeep");
+        std::fs::write(&init, "").unwrap();
+        Command::new("git")
+            .args(["-C", &path.to_string_lossy(), "add", ".gitkeep"])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["-C", &path.to_string_lossy(), "commit", "-m", "init"])
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@test")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@test")
+            .status()
+            .unwrap();
+
+        // Add each file in a single commit
+        for f in files {
+            let fp = path.join(f);
+            if let Some(parent) = fp.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(&fp, format!("content of {f}")).unwrap();
+            Command::new("git")
+                .args(["-C", &path.to_string_lossy(), "add", &fp.to_string_lossy()])
+                .status()
+                .unwrap();
+        }
+        Command::new("git")
+            .args(["-C", &path.to_string_lossy(), "commit", "-m", "multi-file commit"])
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@test")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@test")
+            .status()
+            .unwrap();
+    }
+
+    #[test]
+    fn f_then_enter_with_one_deselected_launches_filtered() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-f-enter-filtered");
+        init_repo_with_files(&tmp, &["README.md", "src/lib.rs"]);
+
+        let expected_oid = rev_parse(&tmp, "HEAD");
+
+        let launches = Rc::new(RefCell::new(Vec::new()));
+        let launches2 = launches.clone();
+        let mut launcher = move |_path: &Path, launch: &HunkLaunch| {
+            launches2.borrow_mut().push(launch.clone());
+            HunkOutcome::Success
+        };
+
+        // f → Space (deselect first = src/lib.rs if sorted, or README.md)
+        // Files are sorted: README.md then src/lib.rs.
+        // Space on cursor 0 deselects README.md.
+        // j moves to src/lib.rs (still selected).
+        // Now only src/lib.rs is selected → filtered launch.
+        let _backend = run_with_events_and_launcher(
+            &tmp,
+            vec![
+                Key::Char('f'),
+                Key::Char(' '),   // deselect README.md
+                Key::Char('j'),   // cursor to src/lib.rs
+                Key::Enter,       // launch with src/lib.rs only
+                Key::Char('q'),
+            ],
+            &mut launcher,
+        );
+
+        let calls = launches.borrow();
+        assert_eq!(calls.len(), 1);
+        match &calls[0] {
+            HunkLaunch::ShowCommitFiltered(oid, paths) => {
+                assert_eq!(oid, &expected_oid);
+                assert_eq!(paths, &["src/lib.rs"]);
+            }
+            other => panic!("expected ShowCommitFiltered, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn range_and_file_selection_launches_show_range_filtered() {
+        let tmp = std::env::temp_dir().join("tuit-e2e-range-filtered");
+        init_repo_with_files(&tmp, &["a.rs", "b.rs"]);
+
+        // We need at least 2 commits.  Make an extra commit that
+        // only touches a.rs, so the range has changed files too.
+        let a_rs = tmp.join("a.rs");
+        std::fs::write(&a_rs, "content of a.rs v2").unwrap();
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "add", &a_rs.to_string_lossy()])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["-C", &tmp.to_string_lossy(), "commit", "-m", "modify a.rs"])
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@test")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@test")
+            .status()
+            .unwrap();
+
+        let expected_older = rev_parse(&tmp, "HEAD~1");
+        let expected_newer = rev_parse(&tmp, "HEAD");
+
+        let launches = Rc::new(RefCell::new(Vec::new()));
+        let launches2 = launches.clone();
+        let mut launcher = move |_path: &Path, launch: &HunkLaunch| {
+            launches2.borrow_mut().push(launch.clone());
+            HunkOutcome::Success
+        };
+
+        // On HEAD (index 0): press v (mark range start), then f
+        // to open file selection, Space to deselect the top file,
+        // j to move cursor, Enter to launch filtered range.
+        let _backend = run_with_events_and_launcher(
+            &tmp,
+            vec![
+                Key::Char('v'),
+                Key::Char('j'),  // move to index 1 (older commit)
+                Key::Char('f'),  // open file selection for commit at cursor
+                Key::Char(' '),  // deselect a.rs (first file, sorted)
+                Key::Char('j'),  // cursor to b.rs
+                Key::Enter,      // launch range filtered with just b.rs
+                Key::Char('q'),
+            ],
+            &mut launcher,
+        );
+
+        let calls = launches.borrow();
+        assert_eq!(calls.len(), 1, "should launch hunk exactly once");
+        match &calls[0] {
+            HunkLaunch::ShowRangeFiltered(older, newer, paths) => {
+                assert_eq!(older, &expected_older);
+                assert_eq!(newer, &expected_newer);
+                assert_eq!(paths, &["b.rs"]);
+            }
+            other => panic!("expected ShowRangeFiltered, got {:?}", other),
+        }
     }
 }
