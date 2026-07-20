@@ -408,20 +408,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
 
     // --- Footer ---
     let count_hint = app.pending_count.map_or(String::new(), |n| format!(" [{}]", n));
-    let range_hint = if has_range {
-        format!(
-            " range: {}..{} ",
-            app.commits[range_lo].hash,
-            app.commits[range_hi].hash,
-        )
-    } else {
-        String::new()
-    };
-    let footer_text = if has_range {
-        format!(" v/Esc: clear range | f: select files | h: review range | Enter: detail | q: quit {}{}", range_hint, count_hint)
-    } else {
-        format!(" c: copy | v: mark range | f: select files | h: hunk | r: reload | Enter: detail | q: quit {}", count_hint)
-    };
+    let footer_text = format!("q: quit | ?: help{}", count_hint);
     let footer = Paragraph::new(Line::from(Span::styled(
         footer_text,
         Style::default().fg(Color::DarkGray),
