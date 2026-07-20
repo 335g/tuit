@@ -176,6 +176,67 @@ pub fn load_changed_files(path: &Path, oid_hex: &str) -> Result<Vec<String>> {
     Ok(files)
 }
 
+/// Load the union of files changed between two commits (`older..newer`).
+pub fn load_range_changed_files(
+    path: &Path,
+    older_oid_hex: &str,
+    newer_oid_hex: &str,
+) -> Result<Vec<String>> {
+    let repo = open_repo(path)?;
+    let older_oid: gix::hash::ObjectId = older_oid_hex.parse().context("Invalid OID format")?;
+    let newer_oid: gix::hash::ObjectId = newer_oid_hex.parse().context("Invalid OID format")?;
+
+    let older_commit = repo.find_commit(older_oid).context("Older commit not found")?;
+    let newer_commit = repo.find_commit(newer_oid).context("Newer commit not found")?;
+
+    let older_tree = repo
+        .find_tree(older_commit.tree_id()?)
+        .context("Failed to find older commit tree")?;
+    let newer_tree = repo
+        .find_tree(newer_commit.tree_id()?)
+        .context("Failed to find newer commit tree")?;
+
+    let mut opts = gix::diff::Options::default();
+    opts.track_path();
+    opts.track_rewrites(None);
+
+    let changes: Vec<gix::object::tree::diff::ChangeDetached> = repo
+        .diff_tree_to_tree(Some(&older_tree), Some(&newer_tree), opts)
+        .context("Failed to diff range trees")?;
+
+    use gix::object::tree::EntryKind;
+
+    let is_blob = |mode: gix::object::tree::EntryMode| -> bool {
+        let kind: EntryKind = mode.into();
+        matches!(kind, EntryKind::Blob | EntryKind::BlobExecutable)
+    };
+
+    let mut files: Vec<String> = changes
+        .iter()
+        .filter_map(|change| match change {
+            gix::object::tree::diff::ChangeDetached::Addition {
+                entry_mode,
+                location,
+                ..
+            }
+            | gix::object::tree::diff::ChangeDetached::Deletion {
+                entry_mode,
+                location,
+                ..
+            } if is_blob(*entry_mode) => Some(location.to_string()),
+            gix::object::tree::diff::ChangeDetached::Modification {
+                entry_mode,
+                location,
+                ..
+            } if is_blob(*entry_mode) => Some(location.to_string()),
+            _ => None,
+        })
+        .collect();
+    files.sort();
+    files.dedup();
+    Ok(files)
+}
+
 /// Load the full commit body and diff for a commit identified by its full OID hex string.
 ///
 /// Returns `(body, diff_text)`.
