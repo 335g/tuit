@@ -89,17 +89,28 @@ const RANGE_BG: &str = "#45475a";
 
 /// Main render dispatch.
 pub fn render(frame: &mut Frame, app: &App) {
+    let area = frame.area();
+    let footer_area = Rect {
+        x: 0,
+        y: area.height.saturating_sub(1),
+        width: area.width,
+        height: 1,
+    };
+
     match &app.screen {
         Screen::Loading => render_loading(frame),
         Screen::List => render_commit_list(frame, app, false),
         Screen::Detail => {
             render_commit_list(frame, app, true);
             render_detail_overlay(frame, app);
+            // Re-render footer on top of the dimming layer.
+            render_footer(frame, app, footer_area);
         }
         Screen::Error(msg) => render_error(frame, msg),
         Screen::Alert(kind) => {
             render_commit_list(frame, app, true);
             render_alert_overlay(frame, app, kind);
+            render_footer(frame, app, footer_area);
         }
     }
 
@@ -407,6 +418,11 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     frame.render_widget(list, layout[1]);
 
     // --- Footer ---
+    render_footer(frame, app, layout[2]);
+}
+
+/// Render the footer bar: mode indicator on the left, command hints on the right.
+fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
     let dim = Style::default().fg(Color::DarkGray);
     let cursor_fg = hex_color(&app.colors.cursor_fg);
 
@@ -437,7 +453,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     }
     let left = Paragraph::new(Line::from(left_spans))
         .alignment(Alignment::Left);
-    frame.render_widget(left, layout[2]);
+    frame.render_widget(left, area);
 
     // Right: static command hints
     let right = Paragraph::new(Line::from(Span::styled(
@@ -445,7 +461,7 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
         dim,
     )))
     .alignment(Alignment::Right);
-    frame.render_widget(right, layout[2]);
+    frame.render_widget(right, area);
 }
 
 /// Render the commit detail overlay on top of the list.
