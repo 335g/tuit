@@ -82,6 +82,11 @@ fn fg(hex: &str) -> Style {
     Style::default().fg(hex_color(hex))
 }
 
+/// Background colour for range-highlighted rows (between the
+/// range-start mark and the cursor), when neither the selected
+/// nor the range-start row itself.  Catppuccin Mocha surface1.
+const RANGE_BG: &str = "#45475a";
+
 /// Main render dispatch.
 pub fn render(frame: &mut Frame, app: &App) {
     match &app.screen {
@@ -181,6 +186,12 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     app.list_scroll.set(scroll);
     app.list_content_height.set(viewport_height);
 
+    // ── Determine range-highlight bounds ────────────────────────
+    let (range_lo, range_hi) = app.range_start.map_or((0, 0), |start| {
+        (start.min(app.selected_index), start.max(app.selected_index))
+    });
+    let has_range = app.range_start.is_some();
+
     // Build list rows
     let rows: Vec<Line> = app
         .commits
@@ -188,7 +199,15 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
         .enumerate()
         .map(|(i, commit)| {
             let is_selected = i == app.selected_index;
-            let cursor = if is_selected { "❯" } else { " " };
+            let in_range = has_range && i >= range_lo && i <= range_hi;
+            let is_range_start = app.range_start == Some(i);
+            let cursor = if is_selected {
+                "❯"
+            } else if is_range_start {
+                "■"
+            } else {
+                " "
+            };
             let w = list_area.width as usize;
             let show_hash = w >= 140;
 
@@ -274,6 +293,45 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                 spans.push(Span::styled(" ", base));
                 spans.push(Span::styled(format!(" {}", date_str), base));
                 Line::from(spans)
+            } else if in_range && !grayed_out {
+                // Range-highlighted row (non-selected)
+                let range_bg = hex_color(RANGE_BG);
+                let base = Style::default().bg(range_bg);
+                let mut spans = vec![Span::styled(format!(" {}", cursor), base)];
+                if show_hash {
+                    spans.push(Span::styled(
+                        format!(" {} ", commit.hash),
+                        base.fg(hex_color(&colors.hash)),
+                    ));
+                }
+                let msg_style = base.fg(hex_color(&colors.message));
+                spans.push(Span::styled(" ", msg_style));
+                if let Some((cc_type, cc_scope, cc_breaking, cc_desc)) = parse_cc(&msg) {
+                    let type_style = base
+                        .fg(hex_color(cc_type_color(&colors, cc_type)))
+                        .add_modifier(Modifier::BOLD);
+                    spans.push(Span::styled(cc_type.to_string(), type_style));
+                    if let Some(scope) = cc_scope {
+                        spans.push(Span::styled(format!("({})", scope), base.fg(Color::DarkGray)));
+                    }
+                    if cc_breaking {
+                        spans.push(Span::styled("!", base.fg(hex_color(&colors.diff_del))));
+                    }
+                    let rest = if cc_desc.is_empty() {
+                        String::new()
+                    } else {
+                        format!(": {}", cc_desc)
+                    };
+                    spans.push(Span::styled(rest, msg_style));
+                } else {
+                    spans.push(Span::styled(msg.clone(), msg_style));
+                }
+                spans.push(Span::styled(" ", msg_style));
+                spans.push(Span::styled(
+                    format!(" {}", date_str),
+                    base.fg(hex_color(&colors.date)),
+                ));
+                Line::from(spans)
             } else {
                 let mut spans = vec![Span::styled(format!(" {}", cursor), muted_fg)];
                 if show_hash {
@@ -347,7 +405,20 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     frame.render_widget(list, layout[1]);
 
     // --- Footer ---
-    let footer_text = " c: copy hash | h: hunk | r: reload branch | Enter: detail | q: quit ";
+    let range_hint = if has_range {
+        format!(
+            " range: {}..{} ",
+            app.commits[range_lo].hash,
+            app.commits[range_hi].hash,
+        )
+    } else {
+        String::new()
+    };
+    let footer_text = if has_range {
+        format!(" v: clear range | h: review range | Enter: detail | q: quit {}", range_hint)
+    } else {
+        " c: copy hash | v: mark range start | h: hunk | r: reload | Enter: detail | q: quit ".to_string()
+    };
     let footer = Paragraph::new(Line::from(Span::styled(
         footer_text,
         Style::default().fg(Color::DarkGray),
@@ -592,7 +663,8 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
                 ("Enter", "Show commit details"),
                 ("c", "Copy commit hash to clipboard"),
                 ("r", "Reload from current branch"),
-                ("h", "Open commit in hunk for review"),
+                ("v", "Mark/unmark range start"),
+                ("h", "Open commit/range in hunk"),
                 ("q", "Quit tuit"),
             ],
         ),
