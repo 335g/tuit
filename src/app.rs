@@ -1,4 +1,5 @@
 use std::cell::Cell;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -49,10 +50,14 @@ pub enum HunkOutcome {
 /// The event loop reads this and dispatches the appropriate hunk command.
 #[derive(Clone, Debug, PartialEq)]
 pub enum HunkLaunch {
-    /// Launch `hunk show <oid>` — review a single commit.
+    /// Launch `hunk show <oid>` — review a single commit (all files).
     ShowCommit(String),
-    /// Launch `hunk diff <older>..<newer>` — review a range of commits.
+    /// Launch `hunk show <oid> -- <paths...>` — review selected files of a commit.
+    ShowCommitFiltered(String, Vec<String>),
+    /// Launch `hunk diff <older>..<newer>` — review a range of commits (all files).
     ShowRange(String, String),
+    /// Launch `hunk diff <older>..<newer> -- <paths...>` — review selected files in range.
+    ShowRangeFiltered(String, String, Vec<String>),
 }
 
 /// Central application state.
@@ -89,13 +94,15 @@ pub struct App {
     pub last_poll_time: Instant,
     /// Filesystem path of the Git repository being viewed.
     pub repo_path: PathBuf,
-    /// Pending Open in Hunk launch, set by `open_in_hunk` and consumed by
+        /// Pending Open in Hunk launch, set by `open_in_hunk` and consumed by
     /// the event loop which performs the actual launch.
     pub pending_hunk_launch: Option<HunkLaunch>,
     /// When set, marks the commit at this index as the start of a range.
     /// Pressing `h` while a range start is set launches
     /// `hunk diff <older>..<newer>` instead of `hunk show <oid>`.
     pub range_start: Option<usize>,
+    /// Active file selection overlay, if any.
+    pub file_selection: Option<FileSelection>,
 }
 
 impl App {
@@ -125,6 +132,7 @@ impl App {
             poll_interval_ms: config.poll_interval_ms,
             notification_timeout_ms: config.notification_timeout_ms,
             range_start: None,
+            file_selection: None,
             // Initialise to the past so the first poll always runs.
             last_poll_time: Instant::now() - Duration::from_millis(config.poll_interval_ms + 1),
             repo_path,
@@ -485,6 +493,75 @@ impl App {
         }
     }
 
+    /// Open the file selection overlay for the currently focused commit.
+    /// Loads the changed file list from git.  Silently ignores errors
+    /// (the user can still use plain hunk launch).
+    pub fn open_file_selection(&mut self) {
+        // Don't re-open if already selecting
+        if self.file_selection.is_some() {
+            return;
+        }
+        let oid = match self.current_commit_oid() {
+            Some(o) => o,
+            None => return,
+        };
+
+        match git::load_changed_files(&self.repo_path, &oid) {
+            Ok(files) if !files.is_empty() => {
+                self.file_selection = Some(FileSelection::new(oid, files));
+            }
+            _ => {}
+        }
+    }
+
+    /// Close the file selection overlay without launching hunk.
+    pub fn close_file_selection(&mut self) {
+        self.file_selection = None;
+    }
+
+    /// Confirm the current file selection and launch hunk with the
+    /// chosen files.  If all files are selected (the default) the
+    /// unfiltered HunkLaunch variant is used (plain `hunk show` / `diff`).
+    /// If no files are selected the overlay stays open with a notification.
+    pub fn confirm_file_selection(&mut self) {
+        let fs = match self.file_selection.take() {
+            Some(fs) => fs,
+            None => return,
+        };
+
+        if fs.selected.is_empty() {
+            self.file_selection = Some(fs);
+            self.set_notification(
+                "No files selected — select at least one file".into(),
+            );
+            return;
+        }
+
+        let paths = fs.selected_paths();
+
+        if let Some(start_idx) = self.range_start.take() {
+            // Range mode
+            let older_idx = start_idx.max(self.selected_index);
+            let newer_idx = start_idx.min(self.selected_index);
+            let older_oid = self.commits[older_idx].oid.clone();
+            let newer_oid = self.commits[newer_idx].oid.clone();
+            self.pending_hunk_launch = match paths {
+                Some(p) => Some(HunkLaunch::ShowRangeFiltered(
+                    older_oid, newer_oid, p,
+                )),
+                None => Some(HunkLaunch::ShowRange(older_oid, newer_oid)),
+            };
+        } else {
+            // Single commit mode — use the OID captured when file
+            // selection was opened.
+            let oid = fs.commit_oid;
+            self.pending_hunk_launch = match paths {
+                Some(p) => Some(HunkLaunch::ShowCommitFiltered(oid, p)),
+                None => Some(HunkLaunch::ShowCommit(oid)),
+            };
+        }
+    }
+
     /// Apply the outcome of a finished Open in Hunk launch.
     /// Failures surface as a footer notification; success resumes silently.
     pub fn on_hunk_finished(&mut self, outcome: HunkOutcome) {
@@ -568,5 +645,205 @@ impl App {
     /// Clear the range start mark, if any.
     pub fn clear_range(&mut self) {
         self.range_start = None;
+    }
+}
+
+// ── File selection ──────────────────────────────────────────────────
+
+/// Tracks the in-progress file selection overlay that lets the user
+/// pick which changed files to forward to hunk.
+#[derive(Clone, Debug)]
+pub struct FileSelection {
+    /// OID of the commit whose file list is shown.
+    pub commit_oid: String,
+    /// All changed file paths for that commit (sorted).
+    pub files: Vec<String>,
+    /// Indices of currently selected files.
+    pub selected: HashSet<usize>,
+    /// Cursor index into `files`.
+    pub cursor: usize,
+    /// Scroll offset for the file list viewport.
+    pub scroll: Cell<usize>,
+}
+
+impl FileSelection {
+    /// Create a new selection with all files pre-selected.
+    pub fn new(commit_oid: String, files: Vec<String>) -> Self {
+        let count = files.len();
+        let all: HashSet<usize> = (0..count).collect();
+        FileSelection {
+            commit_oid,
+            files,
+            selected: all,
+            cursor: 0,
+            scroll: Cell::new(0),
+        }
+    }
+
+    /// Return the list of selected file paths, or `None` if all files
+    /// are selected (meaning "no filter needed").
+    pub fn selected_paths(&self) -> Option<Vec<String>> {
+        if self.selected.len() == self.files.len() || self.selected.is_empty() {
+            return None;
+        }
+        Some(
+            self.files
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| self.selected.contains(i))
+                .map(|(_, p)| p.clone())
+                .collect(),
+        )
+    }
+
+    /// Toggle selection of the current cursor position.
+    pub fn toggle_current(&mut self) {
+        if self.selected.contains(&self.cursor) {
+            self.selected.remove(&self.cursor);
+        } else {
+            self.selected.insert(self.cursor);
+        }
+    }
+
+    /// Select all files.
+    pub fn select_all(&mut self) {
+        self.selected = (0..self.files.len()).collect();
+    }
+
+    /// Deselect all files.
+    pub fn select_none(&mut self) {
+        self.selected.clear();
+    }
+
+    /// Move cursor up; auto-scroll if needed.
+    pub fn navigate_up(&mut self) {
+        if self.cursor > 0 {
+            self.cursor -= 1;
+            let scroll = self.scroll.get();
+            if self.cursor < scroll {
+                self.scroll.set(scroll.saturating_sub(1));
+            }
+        }
+    }
+
+    /// Move cursor down; auto-scroll is handled during render.
+    pub fn navigate_down(&mut self) {
+        if self.cursor + 1 < self.files.len() {
+            self.cursor += 1;
+        }
+    }
+}
+
+#[cfg(test)]
+mod file_selection_tests {
+    use super::*;
+
+    fn make_fs() -> FileSelection {
+        FileSelection::new("abc".into(), vec![
+            "src/main.rs".into(),
+            "src/lib.rs".into(),
+            "Cargo.toml".into(),
+        ])
+    }
+
+    #[test]
+    fn new_selects_all_files() {
+        let fs = make_fs();
+        assert_eq!(fs.selected.len(), 3);
+        assert_eq!(fs.cursor, 0);
+    }
+
+    #[test]
+    fn selected_paths_returns_none_when_all_selected() {
+        let fs = make_fs();
+        assert!(fs.selected_paths().is_none());
+    }
+
+    #[test]
+    fn selected_paths_returns_none_when_none_selected() {
+        let mut fs = make_fs();
+        fs.select_none();
+        assert!(fs.selected_paths().is_none());
+    }
+
+    #[test]
+    fn selected_paths_returns_filtered_when_partial() {
+        let mut fs = make_fs();
+        fs.select_none();
+        fs.selected.insert(0);
+        fs.selected.insert(2);
+        let paths = fs.selected_paths().unwrap();
+        assert_eq!(paths, vec!["src/main.rs", "Cargo.toml"]);
+    }
+
+    #[test]
+    fn toggle_current_deselects_when_selected() {
+        let mut fs = make_fs();
+        assert!(fs.selected.contains(&0));
+        fs.toggle_current();
+        assert!(!fs.selected.contains(&0));
+    }
+
+    #[test]
+    fn toggle_current_selects_when_not_selected() {
+        let mut fs = make_fs();
+        fs.select_none();
+        fs.toggle_current();
+        assert!(fs.selected.contains(&0));
+    }
+
+    #[test]
+    fn select_all_selects_everything() {
+        let mut fs = make_fs();
+        fs.select_none();
+        fs.select_all();
+        assert_eq!(fs.selected.len(), 3);
+    }
+
+    #[test]
+    fn select_none_clears_all() {
+        let mut fs = make_fs();
+        fs.select_none();
+        assert!(fs.selected.is_empty());
+    }
+
+    #[test]
+    fn navigate_up_moves_cursor() {
+        let mut fs = make_fs();
+        fs.cursor = 2;
+        fs.navigate_up();
+        assert_eq!(fs.cursor, 1);
+        fs.navigate_up();
+        assert_eq!(fs.cursor, 0);
+        fs.navigate_up(); // at top — no-op
+        assert_eq!(fs.cursor, 0);
+    }
+
+    #[test]
+    fn navigate_down_moves_cursor() {
+        let mut fs = make_fs();
+        fs.navigate_down();
+        assert_eq!(fs.cursor, 1);
+        fs.navigate_down();
+        assert_eq!(fs.cursor, 2);
+        fs.navigate_down(); // at bottom — no-op
+        assert_eq!(fs.cursor, 2);
+    }
+
+    #[test]
+    fn navigate_up_auto_scrolls_when_cursor_passes_above_scroll() {
+        let mut fs = make_fs();
+        fs.cursor = 2;
+        fs.scroll.set(2);
+        // Move up: cursor becomes 1, which is < scroll(2) → scroll drops to 1
+        fs.navigate_up();
+        assert_eq!(fs.scroll.get(), 1);
+        // Move up again: cursor becomes 0, < scroll(1) → scroll drops to 0
+        fs.navigate_up();
+        assert_eq!(fs.scroll.get(), 0);
+        // At top — no-op
+        fs.navigate_up();
+        assert_eq!(fs.cursor, 0);
+        assert_eq!(fs.scroll.get(), 0);
     }
 }
