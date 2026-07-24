@@ -24,9 +24,10 @@ pub struct Commit {
     pub diff: String,
 }
 
-/// Open the given directory as a git repository.
+/// Open the given directory as a git repository, walking up the file system
+/// from `path` to discover the `.git` directory.
 pub fn open_repo(path: &Path) -> Result<gix::Repository> {
-    gix::open(path).with_context(|| {
+    gix::discover(path).with_context(|| {
         format!(
             "tuit は git リポジトリの中で実行してください: {}",
             path.display()
