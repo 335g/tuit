@@ -225,20 +225,27 @@ impl App {
             return;
         }
 
-        // 5. HEAD change detection
+        // 5. Change detection — HEAD OID or branch name
         let old_head = self.current_head_oid.clone();
+        let old_branch = self.current_branch.clone();
+        let new_branch = git::current_branch(&repo).unwrap_or_else(|_| "?".to_string());
         let head_changed = old_head.as_ref() != Some(&new_head_oid);
+        let branch_changed = !head_changed && old_branch != new_branch;
 
-        if head_changed {
-            // Build notification BEFORE moving new_head_oid.
-            let old_short = old_head
-                .as_ref()
-                .map(|o| &o[..7.min(o.len())])
-                .unwrap_or("?");
-            let new_short = new_head_oid[..7.min(new_head_oid.len())].to_string();
-            self.current_head_oid = Some(new_head_oid);
-            self.current_branch = git::current_branch(&repo).unwrap_or_else(|_| "?".to_string());
-            self.set_notification(format!("HEAD moved: {} → {}", old_short, new_short));
+        if head_changed || branch_changed {
+            self.current_head_oid = Some(new_head_oid.clone());
+            self.current_branch = new_branch.clone();
+
+            if head_changed {
+                let old_short = old_head
+                    .as_ref()
+                    .map(|o| &o[..7.min(o.len())])
+                    .unwrap_or("?");
+                let new_short = new_head_oid[..7.min(new_head_oid.len())].to_string();
+                self.set_notification(format!("HEAD moved: {} → {}", old_short, new_short));
+            } else {
+                self.set_notification(format!("Branch: {} → {}", old_branch, new_branch));
+            }
 
             // Close Detail if it was open
             if matches!(self.screen, Screen::Detail) {
@@ -249,7 +256,7 @@ impl App {
 
             self.replace_commits(new_commits);
         } else {
-            // HEAD unchanged — still update timestamps
+            // HEAD and branch unchanged — still update timestamps
             if let (Screen::Detail, Some(sel)) = (&self.screen, self.selected_commit.clone()) {
                 let oid = sel.oid.clone();
                 if let Some(nc) = new_commits.iter().find(|c| c.oid == oid) {
