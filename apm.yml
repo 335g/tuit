@@ -7,7 +7,6 @@ targets:
 dependencies:
   apm:
   - mattpocock/skills
-  - shadcn/improve
   mcp: []
 includes: auto
 scripts: {}
