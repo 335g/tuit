@@ -1,22 +1,22 @@
 # tuit
 
-**tuit** は、ターミナル上で動作する Git ログビューアです。Rust と [ratatui](https://github.com/ratatui/ratatui) で構築されています。
+**tuit** is a terminal-based Git log viewer built with Rust and [ratatui](https://github.com/ratatui/ratatui).
 
-カレントディレクトリの Git リポジトリを開き、現在のブランチのコミット一覧をスクロール可能なリストで表示します。コミットを選択すると、そのコミットの本文と diff をオーバーレイで確認できます。すべての操作はキーボードだけで完結します。
+It opens the Git repository at the current directory and displays a scrollable list of commits on the current branch. Select a commit to view its full body and diff in an overlay. All operations are keyboard-driven.
 
-## インストール
+## Installation
 
-### crates.io からインストール
+### From crates.io
 
 ```bash
 cargo install tuit-bin
 ```
 
-### 前提条件
+### Prerequisites
 
-- [Rust](https://www.rust-lang.org/) ツールチェーン (edition 2024、Rust 1.85 以降推奨)
+- [Rust](https://www.rust-lang.org/) toolchain (edition 2024, Rust 1.85+ recommended)
 
-### ソースからビルド
+### Build from source
 
 ```bash
 git clone https://github.com/yoshikikudo/tuit.git
@@ -24,54 +24,54 @@ cd tuit
 cargo build --release
 ```
 
-ビルドされたバイナリは `target/release/tuit` に配置されます。お好みで `$PATH` の通ったディレクトリにコピーしてください。
+The binary will be placed at `target/release/tuit`. Copy it to a directory in your `$PATH` if desired.
 
-## 使い方
+## Usage
 
-Git リポジトリ内で `tuit` を実行するだけです。
+Simply run `tuit` inside a Git repository.
 
 ```bash
 cd /path/to/your/repo
 tuit
 ```
 
-### キーバインド
+### Key bindings
 
-#### コミット一覧画面
+#### Commit list
 
-| キー | 操作 |
-|------|------|
-| `↑` / `k` | カーソルを上に移動 |
-| `↓` / `j` | カーソルを下に移動 |
-| `Enter` | 選択中のコミットの詳細を開く |
-| `h` | 選択中のコミットを hunk でレビュー |
-| `q` | tuit を終了 |
-| `?` | ヘルプオーバーレイを開く |
+| Key | Action |
+|-----|--------|
+| `↑` / `k` | Move cursor up |
+| `↓` / `j` | Move cursor down |
+| `Enter` | Open detail for the selected commit |
+| `h` | Open the selected commit in hunk |
+| `q` | Quit tuit |
+| `?` | Open help overlay |
 
-#### コミット詳細画面 (オーバーレイ)
+#### Commit detail (overlay)
 
-| キー | 操作 |
-|------|------|
-| `↑` / `k` | スクロールアップ |
-| `↓` / `j` | スクロールダウン |
-| `Ctrl+f` / `PageDown` | 1 ページスクロールダウン |
-| `Ctrl+b` / `PageUp` | 1 ページスクロールアップ |
-| `Esc` | 詳細を閉じて一覧に戻る |
-| `h` | 表示中のコミットを hunk でレビュー |
-| `?` | ヘルプオーバーレイを開く |
+| Key | Action |
+|-----|--------|
+| `↑` / `k` | Scroll up |
+| `↓` / `j` | Scroll down |
+| `Ctrl+f` / `PageDown` | Scroll down one page |
+| `Ctrl+b` / `PageUp` | Scroll up one page |
+| `Esc` | Close detail and return to list |
+| `h` | Open the viewed commit in hunk |
+| `?` | Open help overlay |
 
-### 表示内容
+### Display
 
-- **コミット一覧**: 各コミットの省略ハッシュ (7 文字)、コミットメッセージの件名、作者名、相対タイムスタンプ (`3d ago` / `2h ago` など) を一覧表示します。
-- **コミット詳細**: 選択したコミットのハッシュ、作者、日付、コミット本文、および unified diff をカラーリング付きで表示します。diff の追加行・削除行・コンテキスト行はそれぞれ色分けされます。
-- **ライブ同期**: アプリケーション実行中、2 秒ごとに Git リポジトリの状態をポーリングし、新しいコミットや HEAD の移動を自動検出します。HEAD が変わった場合はフッター全体が青色で塗りつぶされ、中央にその旨の通知が表示されます。コミット一覧も自動で再読み込みされます。
-- **エラー表示**: Git リポジトリ外で実行した場合や、空のリポジトリ、破損した `.git` ディレクトリなどに対しては画面上にエラーメッセージを表示します。
+- **Commit list**: Shows abbreviated hash (7 characters), commit subject, author name, and relative timestamp (`3d ago` / `2h ago` etc.) for each commit.
+- **Commit detail**: Shows the selected commit's hash, author, date, full body, and a colorized unified diff. Added lines, deleted lines, and context lines are each color-coded.
+- **Live sync**: Polls the Git repository every 2 seconds while running, automatically detecting new commits and HEAD changes. When HEAD moves, the footer turns solid blue with a centered notification. The commit list is automatically reloaded.
+- **Error screen**: Shows an error message when run outside a Git repository, inside an empty repository, or against a broken `.git` directory.
 
-## 設定
+## Configuration
 
-設定ファイルは `~/.config/tuit/config.toml` に配置します。テーマファイルは `~/.config/tuit/themes/` ディレクトリに配置します。
+Place your config file at `~/.config/tuit/config.toml`. Theme files go under `~/.config/tuit/themes/`.
 
-### 設定例 (`~/.config/tuit/config.toml`)
+### Config example (`~/.config/tuit/config.toml`)
 
 ```toml
 theme = "monokai"
@@ -79,33 +79,33 @@ poll_interval_ms = 3000
 notification_timeout_ms = 5000
 ```
 
-| 項目 | 説明 | デフォルト値 |
-|------|------|-------------|
-| `theme` | 使用するテーマ名 (`default` または `themes/` 下のファイル名) | `"default"` |
-| `poll_interval_ms` | Git ポーリング間隔 (ミリ秒) | `2000` |
-| `notification_timeout_ms` | フッター通知の表示時間 (ミリ秒) | `3000` |
+| Field | Description | Default |
+|-------|-------------|---------|
+| `theme` | Theme name (`"default"` or a filename under `themes/`) | `"default"` |
+| `poll_interval_ms` | Git polling interval (milliseconds) | `2000` |
+| `notification_timeout_ms` | Footer notification display duration (milliseconds) | `3000` |
 
-### テーマ
+### Themes
 
-デフォルトのテーマは Catppuccin Mocha を基調としたダークテーマです。`~/.config/tuit/themes/<name>.toml` にテーマファイルを作成し、`config.toml` で `theme = "<name>"` と指定することでカスタマイズできます。
+The default theme is a dark theme based on Catppuccin Mocha. To customize, create a theme file at `~/.config/tuit/themes/<name>.toml` and set `theme = "<name>"` in your config.
 
-利用可能なカスタマイズ項目:
+Customizable fields:
 
-- `cursor_bg`, `cursor_fg` — 選択行のハイライト色
-- `list_bg` — 一覧画面の背景色
-- `hash`, `message`, `author`, `date` — 各フィールドの文字色
-- `detail_bg`, `detail_border` — 詳細オーバーレイの背景・枠線色
-- `detail_heading`, `detail_value` — 詳細画面の見出し・値の文字色
-- `diff_add`, `diff_del`, `diff_normal` — diff の追加行・削除行・コンテキスト行の色
+- `cursor_bg`, `cursor_fg` — selected row highlight colors
+- `list_bg` — list view background
+- `hash`, `message`, `author`, `date` — field-specific text colors
+- `detail_bg`, `detail_border` — detail overlay background and border
+- `detail_heading`, `detail_value` — detail heading and value colors
+- `diff_add`, `diff_del`, `diff_normal` — diff line colors (added, deleted, context)
 
-## 技術スタック
+## Tech stack
 
-- **言語**: Rust (edition 2024)
-- **UI フレームワーク**: [ratatui](https://github.com/ratatui/ratatui) + [crossterm](https://github.com/crossterm-rs/crossterm)
-- **Git データアクセス**: [gix (gitoxide)](https://github.com/Byron/gitoxide) — 純 Rust 実装、`git` CLI への依存なし
-- **diff 生成**: [imara-diff](https://github.com/nickel-org/imara-diff)
-- **設定管理**: TOML + [directories](https://github.com/soc/directories-rs) (XDG 準拠のパス解決)
+- **Language**: Rust (edition 2024)
+- **UI framework**: [ratatui](https://github.com/ratatui/ratatui) + [crossterm](https://github.com/crossterm-rs/crossterm)
+- **Git data access**: [gix (gitoxide)](https://github.com/Byron/gitoxide) — pure Rust, no `git` CLI dependency
+- **Diff generation**: [imara-diff](https://github.com/nickel-org/imara-diff)
+- **Config management**: TOML + [directories](https://github.com/soc/directories-rs) (XDG-compliant path resolution)
 
-## ライセンス
+## License
 
-MIT License — 詳細は [LICENSE](LICENSE) を参照してください。
+MIT License — see [LICENSE](LICENSE) for details.
