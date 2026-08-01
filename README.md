@@ -1,5 +1,7 @@
 # tuit
 
+#![img-001](img/img-001.png)
+
 **tuit** is a terminal-based Git log viewer built with Rust and [ratatui](https://github.com/ratatui/ratatui).
 
 It opens the Git repository at the current directory and displays a scrollable list of commits on the current branch. Select a commit to view its full body and diff in an overlay. All operations are keyboard-driven.
