@@ -1,6 +1,6 @@
 # tuit
 
-#![img-001](img/img-001.png)
+![img-001](img/img-001.png)
 
 **tuit** is a terminal-based Git log viewer built with Rust and [ratatui](https://github.com/ratatui/ratatui).
 

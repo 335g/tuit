@@ -1,6 +1,6 @@
 # tuit
 
-#![img-001](img/img-001.png)
+![img-001](img/img-001.png)
 
 **tuit** は、ターミナル上で動作する Git ログビューアです。Rust と [ratatui](https://github.com/ratatui/ratatui) で構築されています。
 
