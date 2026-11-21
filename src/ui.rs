@@ -101,6 +101,7 @@ pub fn render(frame: &mut Frame, app: &App) {
             // Re-render footer on top of the dimming layer.
             render_footer(frame, app, footer_area, true);
         }
+        Screen::Worktrees => render_worktrees(frame, app),
         Screen::Error(msg) => render_error(frame, msg),
         Screen::Alert(kind) => {
             render_commit_list(frame, app, true);
@@ -365,6 +366,244 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     render_footer(frame, app, layout[2], grayed_out);
 }
 
+/// Render the worktree dashboard: topology graph (left) + worktree cards (right).
+pub fn render_worktrees(frame: &mut Frame, app: &App) {
+    let area = frame.area();
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // header
+            Constraint::Min(0),    // content
+            Constraint::Length(1), // footer
+        ])
+        .split(area);
+
+    // --- Header ---
+    let version_text = format!("tuit {} ", env!("CARGO_PKG_VERSION"));
+    let left_text = format!(" worktrees: {}", app.worktrees.len());
+    let header_width = layout[0].width as usize;
+    let padding_width = header_width.saturating_sub(left_text.width() + version_text.width());
+    let header_line = Line::from(vec![
+        Span::styled(left_text, Style::default().bold()),
+        Span::styled(" ".repeat(padding_width), Style::default()),
+        Span::styled(version_text, Style::default().fg(Color::DarkGray)),
+    ]);
+    frame.render_widget(Paragraph::new(header_line), layout[0]);
+
+    // --- Content: graph | cards ---
+    let content = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
+        .split(layout[1]);
+
+    render_worktree_graph(frame, app, content[0]);
+    render_worktree_cards(frame, app, content[1]);
+
+    render_footer(frame, app, layout[2], false);
+}
+
+/// Left pane: `git log --graph`-style topology across all worktree heads.
+fn render_worktree_graph(frame: &mut Frame, app: &App, area: Rect) {
+    let colors = &app.colors;
+    let block = Block::default()
+        .title(" Topology ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(hex_color(&colors.detail_border)))
+        .style(Style::default().bg(hex_color(&colors.list_bg)));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let selected_branch = app
+        .worktrees
+        .get(app.worktree_selected)
+        .map(|w| w.branch.clone());
+
+    let lines: Vec<Line> = app
+        .worktree_graph
+        .lines
+        .iter()
+        .map(|gl| {
+            let highlighted = selected_branch
+                .as_ref()
+                .map_or(false, |b| gl.refs.iter().any(|r| r == b));
+            if highlighted {
+                Line::from(Span::styled(
+                    gl.text.clone(),
+                    Style::default()
+                        .bg(hex_color(&colors.cursor_bg))
+                        .fg(hex_color(&colors.cursor_fg))
+                        .add_modifier(Modifier::BOLD),
+                ))
+            } else {
+                Line::from(Span::styled(
+                    gl.text.clone(),
+                    Style::default().fg(hex_color(&colors.message)),
+                ))
+            }
+        })
+        .collect();
+
+    if lines.is_empty() {
+        let p = Paragraph::new(Line::from(Span::styled(
+            " no commits ",
+            Style::default().fg(Color::DarkGray),
+        )))
+        .alignment(Alignment::Center)
+        .style(Style::default().bg(hex_color(&colors.list_bg)));
+        frame.render_widget(p, inner);
+    } else {
+        let p = Paragraph::new(Text::from(lines))
+            .style(Style::default().bg(hex_color(&colors.list_bg)));
+        frame.render_widget(p, inner);
+    }
+}
+
+/// Right pane: selectable worktree cards with ahead/behind, gauge, sparkline.
+fn render_worktree_cards(frame: &mut Frame, app: &App, area: Rect) {
+    let colors = &app.colors;
+    let block = Block::default()
+        .title(" Worktrees ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(hex_color(&colors.detail_border)))
+        .style(Style::default().bg(hex_color(&colors.list_bg)));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let width = inner.width as usize;
+    let compact = width < 44;
+
+    let mut lines: Vec<Line> = Vec::new();
+    for (i, w) in app.worktrees.iter().enumerate() {
+        let selected = i == app.worktree_selected;
+        let cursor = if selected { "❯" } else { " " };
+        let base_style = if selected {
+            Style::default()
+                .bg(hex_color(&colors.cursor_bg))
+                .fg(hex_color(&colors.cursor_fg))
+        } else {
+            Style::default()
+        };
+        let branch_style = if selected {
+            base_style.add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .fg(hex_color(&colors.message))
+                .add_modifier(Modifier::BOLD)
+        };
+        let ahead_style = if selected {
+            base_style
+        } else {
+            Style::default().fg(hex_color(&colors.diff_add))
+        };
+        let behind_style = if selected {
+            base_style
+        } else {
+            Style::default().fg(hex_color(&colors.detail_heading))
+        };
+        let gauge_style = if selected {
+            base_style
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+        let spark_style = if selected {
+            base_style
+        } else {
+            Style::default().fg(hex_color(&colors.detail_border))
+        };
+        let dirty_style = if selected {
+            base_style
+        } else {
+            Style::default().fg(hex_color(&colors.diff_del))
+        };
+
+        let mut spans = vec![Span::styled(format!(" {}", cursor), base_style)];
+        spans.push(Span::styled(format!(" {:<14}", w.branch), branch_style));
+        spans.push(Span::styled(format!(" ▲{}", w.ahead), ahead_style));
+        spans.push(Span::styled(format!(" ▼{}", w.behind), behind_style));
+        if !compact {
+            spans.push(Span::styled(
+                format!(" {}", gauge_string(w.ahead, w.behind, 10)),
+                gauge_style,
+            ));
+            spans.push(Span::styled(format!(" {}", sparkline_string(&w.activity)), spark_style));
+        }
+        if w.dirty {
+            spans.push(Span::styled(" *dirty", dirty_style));
+        }
+        lines.push(Line::from(spans));
+
+        // Second line: HEAD hash + subject (or placeholder).
+        let head_text = if w.head_oid.is_empty() {
+            "        (no commits)".to_string()
+        } else {
+            let prefix = "        "; // 8 spaces
+            let hash = format!("{} ", w.head_hash);
+            let max_subject = width.saturating_sub(prefix.len() + hash.len() + 1);
+            let subject = truncate_chars(&w.head_subject, max_subject);
+            format!("{}{}{}", prefix, hash, subject)
+        };
+        let head_style = if selected {
+            base_style
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+        lines.push(Line::from(Span::styled(head_text, head_style)));
+    }
+
+    if lines.is_empty() {
+        let p = Paragraph::new(Line::from(Span::styled(
+            " no worktrees ",
+            Style::default().fg(Color::DarkGray),
+        )))
+        .alignment(Alignment::Center)
+        .style(Style::default().bg(hex_color(&colors.list_bg)));
+        frame.render_widget(p, inner);
+    } else {
+        let p = Paragraph::new(Text::from(lines))
+            .style(Style::default().bg(hex_color(&colors.list_bg)));
+        frame.render_widget(p, inner);
+    }
+}
+
+/// Text-only gauge `[████░░░░]` showing ahead/(ahead+behind) ratio.
+fn gauge_string(ahead: usize, behind: usize, width: usize) -> String {
+    let total = ahead + behind;
+    let filled = if total == 0 {
+        0
+    } else {
+        (((ahead as f64) / (total as f64)) * (width as f64)).round() as usize
+    }
+    .min(width);
+    format!("[{}{}]", "█".repeat(filled), "░".repeat(width - filled))
+}
+
+/// Unicode block-chart sparkline from daily commit counts.
+fn sparkline_string(values: &[u64]) -> String {
+    const BLOCKS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+    if values.is_empty() {
+        return String::new();
+    }
+    let max = values.iter().copied().max().unwrap_or(0).max(1);
+    values
+        .iter()
+        .map(|&v| {
+            let idx = ((v as f64 / max as f64) * 7.0).round() as usize;
+            BLOCKS[idx.min(7)]
+        })
+        .collect()
+}
+
+/// Truncate a string to `width` characters, appending `…` when clipped.
+fn truncate_chars(s: &str, width: usize) -> String {
+    if s.chars().count() <= width {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(width.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
 /// Render the footer bar: mode indicator on the left, command hints on the right.
 fn render_footer(frame: &mut Frame, app: &App, area: Rect, grayed_out: bool) {
     let dim = Style::default().fg(Color::DarkGray);
@@ -377,6 +616,7 @@ fn render_footer(frame: &mut Frame, app: &App, area: Rect, grayed_out: bool) {
         let (label, bg) = match &app.screen {
             Screen::List => (" NORM ", "#89b4fa"),
             Screen::Detail => (" DETAIL ", "#a6e3a1"),
+            Screen::Worktrees => (" WORK ", "#94e2d5"),
             Screen::Alert(_) => (" ALERT ", "#f38ba8"),
             Screen::Error(_) => (" ERROR ", "#f38ba8"),
             Screen::Loading => (" LOAD ", "#6c7086"),
@@ -656,6 +896,17 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
                 ("c", "Copy commit hash to clipboard"),
                 ("r", "Reload from current branch"),
                 ("Esc", "Close detail view"),
+            ],
+        ),
+        Screen::Worktrees => (
+            "Worktrees",
+            &[
+                ("^ / k", "Move cursor up"),
+                ("v / j", "Move cursor down"),
+                ("c", "Copy HEAD hash to clipboard"),
+                ("r", "Reload worktrees"),
+                ("w / Esc", "Back to commit list"),
+                ("q", "Quit tuit"),
             ],
         ),
         Screen::Error(_) => ("Error", &[("Enter", "Quit")]),

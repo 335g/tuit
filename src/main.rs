@@ -221,9 +221,13 @@ pub fn handle_input(app: &mut App, key: Key) {
         return;
     }
 
-    // Global: r reloads commit list from the current branch.
+    // Global: r reloads commit list (or the worktree dashboard).
     if key == Key::Char('r') {
-        app.reload();
+        if app.screen == Screen::Worktrees {
+            app.refresh_worktrees();
+        } else {
+            app.reload();
+        }
         return;
     }
 
@@ -252,6 +256,7 @@ pub fn handle_input(app: &mut App, key: Key) {
                 Key::Ctrl('b') | Key::PageUp => app.navigate_page_up(),
                 Key::Enter => app.select_commit(),
                 Key::Char('c') => copy_commit_hash(app),
+                Key::Char('w') => app.open_worktrees(),
                 Key::Char('q') => app.quit(),
                 Key::MouseClick(row) => select_commit_at_row(app, row),
                 _ => {}
@@ -264,6 +269,14 @@ pub fn handle_input(app: &mut App, key: Key) {
             Key::Ctrl('f') | Key::PageDown => app.scroll_detail_page_down(),
             Key::Ctrl('b') | Key::PageUp => app.scroll_detail_page_up(),
             Key::Char('c') => copy_commit_hash(app),
+            _ => {}
+        },
+        Screen::Worktrees => match key {
+            Key::Char('w') | Key::Esc => app.close_worktrees(),
+            Key::Up | Key::Char('k') => app.navigate_worktree_up(),
+            Key::Down | Key::Char('j') => app.navigate_worktree_down(),
+            Key::Char('c') => copy_commit_hash(app),
+            Key::Char('q') => app.quit(),
             _ => {}
         },
         Screen::Error(_) => match key {
