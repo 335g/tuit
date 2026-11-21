@@ -1028,4 +1028,61 @@ mod e2e_tests {
         std::env::set_current_dir(prev_dir).unwrap();
     }
 
+    #[test]
+    fn worktree_dashboard_renders_topology_and_cards() {
+        let base = std::env::temp_dir().join("tuit-e2e-worktrees");
+        let main = base.join("main");
+        let wta = base.join("feat-a");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&main).unwrap();
+
+        let commit = |dir: &Path, msg: &str| {
+            let file = dir.join(format!("f-{}.txt", msg.replace(' ', "-")));
+            std::fs::write(&file, msg).unwrap();
+            Command::new("git")
+                .args(["-C", &dir.to_string_lossy(), "add", "."])
+                .status()
+                .unwrap();
+            Command::new("git")
+                .args(["-C", &dir.to_string_lossy(), "commit", "-m", msg])
+                .env("GIT_AUTHOR_NAME", "Test User")
+                .env("GIT_AUTHOR_EMAIL", "test@example.com")
+                .env("GIT_COMMITTER_NAME", "Test User")
+                .env("GIT_COMMITTER_EMAIL", "test@example.com")
+                .status()
+                .unwrap();
+        };
+
+        Command::new("git")
+            .args(["init", "--initial-branch=main"])
+            .arg(&main)
+            .status()
+            .unwrap();
+        commit(&main, "main 0");
+        commit(&main, "main 1");
+
+        Command::new("git")
+            .args(["-C", &main.to_string_lossy(), "worktree", "add", "-b", "feat-a"])
+            .arg(&wta)
+            .status()
+            .unwrap();
+        commit(&wta, "feat a 1");
+
+        let backend = run_with_events(&main, vec![Key::Char('w'), Key::Char('q')]);
+        let content = buf_to_string(backend.buffer());
+
+        assert!(
+            content.contains("Topology"),
+            "Expected 'Topology' pane, got:\n{content}"
+        );
+        assert!(
+            content.contains("Worktrees"),
+            "Expected 'Worktrees' pane, got:\n{content}"
+        );
+        assert!(content.contains("feat-a"), "got:\n{content}");
+        assert!(content.contains("main"), "got:\n{content}");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
 }
