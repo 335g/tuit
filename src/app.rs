@@ -1,5 +1,4 @@
 use std::cell::Cell;
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -33,31 +32,6 @@ pub enum AlertKind {
 pub struct Notification {
     pub message: String,
     pub expires_at: Instant,
-}
-
-/// Outcome of an Open in Hunk launch, reported back to the app by the
-/// event loop that performed the side effects.
-#[derive(Clone, Debug, PartialEq)]
-pub enum HunkOutcome {
-    /// Hunk ran and exited successfully — resume silently.
-    Success,
-    /// Hunk could not be started or exited non-zero. Carries a
-    /// user-facing message for the footer notification.
-    Failed(String),
-}
-
-/// Specification for a pending Hunk launch.
-/// The event loop reads this and dispatches the appropriate hunk command.
-#[derive(Clone, Debug, PartialEq)]
-pub enum HunkLaunch {
-    /// Launch `hunk show <oid>` — review a single commit (all files).
-    ShowCommit(String),
-    /// Launch `hunk show <oid> -- <paths...>` — review selected files of a commit.
-    ShowCommitFiltered(String, Vec<String>),
-    /// Launch `hunk diff <older>..<newer>` — review a range of commits (all files).
-    ShowRange(String, String),
-    /// Launch `hunk diff <older>..<newer> -- <paths...>` — review selected files in range.
-    ShowRangeFiltered(String, String, Vec<String>),
 }
 
 /// Central application state.
@@ -94,15 +68,6 @@ pub struct App {
     pub last_poll_time: Instant,
     /// Filesystem path of the Git repository being viewed.
     pub repo_path: PathBuf,
-        /// Pending Open in Hunk launch, set by `open_in_hunk` and consumed by
-    /// the event loop which performs the actual launch.
-    pub pending_hunk_launch: Option<HunkLaunch>,
-    /// When set, marks the commit at this index as the start of a range.
-    /// Pressing `h` while a range start is set launches
-    /// `hunk diff <older>..<newer>` instead of `hunk show <oid>`.
-    pub range_start: Option<usize>,
-    /// Active file selection overlay, if any.
-    pub file_selection: Option<FileSelection>,
     /// Numeric prefix accumulated for movement commands (e.g. `10` then `j`).
     /// Reset to `None` after every non-digit action.
     pub pending_count: Option<usize>,
@@ -134,13 +99,10 @@ impl App {
             current_head_oid: None,
             poll_interval_ms: config.poll_interval_ms,
             notification_timeout_ms: config.notification_timeout_ms,
-            range_start: None,
-            file_selection: None,
             pending_count: None,
             // Initialise to the past so the first poll always runs.
             last_poll_time: Instant::now() - Duration::from_millis(config.poll_interval_ms + 1),
             repo_path,
-            pending_hunk_launch: None,
         }
     }
 
@@ -396,7 +358,6 @@ impl App {
     /// Dismiss the alert and return to the commit list.
     pub fn dismiss_alert(&mut self) {
         if matches!(self.screen, Screen::Alert(_)) {
-            self.clear_range();
             self.screen = Screen::List;
             self.selected_commit = None;
             self.detail_scroll.set(0);
@@ -460,159 +421,11 @@ impl App {
         self.should_quit = true;
     }
 
-    /// Record an Open in Hunk launch for the currently focused commit or range.
-    ///
-    /// Only records the intent; the event loop performs the actual launch
-    /// (suspend the TUI, run hunk, resume) and reports the result back via
-    /// `on_hunk_finished`. Does nothing on screens without a focused commit.
-    ///
-    /// When a range start is set (List view only), launches
-    /// `hunk diff <older>..<newer>` covering all commits between the mark
-    /// and the current selection.  If mark and selection are the same commit
-    /// it falls back to a single-commit show.
-    pub fn open_in_hunk(&mut self) {
-        match &self.screen {
-            Screen::List => {
-                if let Some(oid) = self.current_commit_oid() {
-                    if let Some(start_idx) = self.range_start.take() {
-                        let older_idx = start_idx.max(self.selected_index);
-                        let newer_idx = start_idx.min(self.selected_index);
-
-                        if older_idx == newer_idx {
-                            // Same commit → fall back to single
-                            self.pending_hunk_launch =
-                                Some(HunkLaunch::ShowCommit(oid));
-                        } else {
-                            let older_oid = self.commits[older_idx].oid.clone();
-                            let newer_oid = self.commits[newer_idx].oid.clone();
-                            self.pending_hunk_launch =
-                                Some(HunkLaunch::ShowRange(older_oid, newer_oid));
-                        }
-                    } else {
-                        self.pending_hunk_launch =
-                            Some(HunkLaunch::ShowCommit(oid));
-                    }
-                }
-            }
-            Screen::Detail => {
-                if let Some(oid) = self.current_commit_oid() {
-                    self.pending_hunk_launch =
-                        Some(HunkLaunch::ShowCommit(oid));
-                }
-            }
-            _ => {}
-        }
-    }
-
-    /// Open the file selection overlay for the currently focused commit
-    /// or range.  When a range start is set, loads the union of changed
-    /// files across the whole range (`older..newer`).  Falls back to the
-    /// single-commit file list when the range resolves to the same commit.
-    pub fn open_file_selection(&mut self) {
-        // Don't re-open if already selecting
-        if self.file_selection.is_some() {
-            return;
-        }
-
-        // Range mode: show union of files changed across the whole range
-        if let Some(start_idx) = self.range_start {
-            let older_idx = start_idx.max(self.selected_index);
-            let newer_idx = start_idx.min(self.selected_index);
-            if older_idx != newer_idx {
-                let older_oid = self.commits[older_idx].oid.clone();
-                let newer_oid = self.commits[newer_idx].oid.clone();
-                match git::load_range_changed_files(
-                    &self.repo_path,
-                    &older_oid,
-                    &newer_oid,
-                ) {
-                    Ok(files) if !files.is_empty() => {
-                        self.file_selection =
-                            Some(FileSelection::new(newer_oid, files));
-                        return;
-                    }
-                    _ => {}
-                }
-            }
-            // Fall through to single-commit list on error or same-commit range
-        }
-
-        // Single-commit mode
-        let oid = match self.current_commit_oid() {
-            Some(o) => o,
-            None => return,
-        };
-        match git::load_changed_files(&self.repo_path, &oid) {
-            Ok(files) if !files.is_empty() => {
-                self.file_selection = Some(FileSelection::new(oid, files));
-            }
-            _ => {}
-        }
-    }
-
-    /// Close the file selection overlay without launching hunk.
-    pub fn close_file_selection(&mut self) {
-        self.file_selection = None;
-    }
-
-    /// Confirm the current file selection and launch hunk with the
-    /// chosen files.  If all files are selected (the default) the
-    /// unfiltered HunkLaunch variant is used (plain `hunk show` / `diff`).
-    /// If no files are selected the overlay stays open with a notification.
-    pub fn confirm_file_selection(&mut self) {
-        let fs = match self.file_selection.take() {
-            Some(fs) => fs,
-            None => return,
-        };
-
-        if fs.selected.is_empty() {
-            self.file_selection = Some(fs);
-            self.set_notification(
-                "No files selected — select at least one file".into(),
-            );
-            return;
-        }
-
-        let paths = fs.selected_paths();
-
-        if let Some(start_idx) = self.range_start.take() {
-            // Range mode
-            let older_idx = start_idx.max(self.selected_index);
-            let newer_idx = start_idx.min(self.selected_index);
-            let older_oid = self.commits[older_idx].oid.clone();
-            let newer_oid = self.commits[newer_idx].oid.clone();
-            self.pending_hunk_launch = match paths {
-                Some(p) => Some(HunkLaunch::ShowRangeFiltered(
-                    older_oid, newer_oid, p,
-                )),
-                None => Some(HunkLaunch::ShowRange(older_oid, newer_oid)),
-            };
-        } else {
-            // Single commit mode — use the OID captured when file
-            // selection was opened.
-            let oid = fs.commit_oid;
-            self.pending_hunk_launch = match paths {
-                Some(p) => Some(HunkLaunch::ShowCommitFiltered(oid, p)),
-                None => Some(HunkLaunch::ShowCommit(oid)),
-            };
-        }
-    }
-
-    /// Apply the outcome of a finished Open in Hunk launch.
-    /// Failures surface as a footer notification; success resumes silently.
-    pub fn on_hunk_finished(&mut self, outcome: HunkOutcome) {
-        if let HunkOutcome::Failed(message) = outcome {
-            self.set_notification(message);
-        }
-    }
-
     /// Reload the commit list from the current branch.
     ///
     /// Re-opens the repository, re-fetches the branch name and commits,
     /// closes the detail view, and resets the selection to the top.
     pub fn reload(&mut self) {
-        self.clear_range();
-
         let repo = match git::open_repo(&self.repo_path) {
             Ok(r) => r,
             Err(e) => {
