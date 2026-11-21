@@ -1085,4 +1085,86 @@ mod e2e_tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    #[test]
+    fn worktree_dashboard_navigation_moves_selection() {
+        let base = std::env::temp_dir().join("tuit-e2e-wt-nav");
+        let main = base.join("main");
+        let wta = base.join("feat-a");
+        let wtb = base.join("feat-b");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&main).unwrap();
+
+        let commit = |dir: &Path, msg: &str| {
+            let file = dir.join(format!("f-{}.txt", msg.replace(' ', "-")));
+            std::fs::write(&file, msg).unwrap();
+            Command::new("git")
+                .args(["-C", &dir.to_string_lossy(), "add", "."])
+                .status()
+                .unwrap();
+            Command::new("git")
+                .args(["-C", &dir.to_string_lossy(), "commit", "-m", msg])
+                .env("GIT_AUTHOR_NAME", "Test User")
+                .env("GIT_AUTHOR_EMAIL", "test@example.com")
+                .env("GIT_COMMITTER_NAME", "Test User")
+                .env("GIT_COMMITTER_EMAIL", "test@example.com")
+                .status()
+                .unwrap();
+        };
+
+        Command::new("git")
+            .args(["init", "--initial-branch=main"])
+            .arg(&main)
+            .status()
+            .unwrap();
+        commit(&main, "main 0");
+
+        Command::new("git")
+            .args(["-C", &main.to_string_lossy(), "worktree", "add", "-b", "feat-a"])
+            .arg(&wta)
+            .status()
+            .unwrap();
+        commit(&wta, "feat a 1");
+
+        Command::new("git")
+            .args(["-C", &main.to_string_lossy(), "worktree", "add", "-b", "feat-b"])
+            .arg(&wtb)
+            .status()
+            .unwrap();
+        commit(&wtb, "feat b 1");
+
+        let prev_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&main).unwrap();
+
+        let cfg = config::Config {
+            theme: "default".into(),
+            colors: config::default_colors(),
+            poll_interval_ms: 2000,
+            notification_timeout_ms: 3000,
+        };
+        let mut app = App::new(cfg, main.clone());
+        app.load_commits();
+
+        super::handle_input(&mut app, Key::Char('w'));
+        assert_eq!(app.screen, Screen::Worktrees);
+        assert!(
+            app.worktrees.len() >= 3,
+            "expected main + 2 linked worktrees, got {}: {:?}",
+            app.worktrees.len(),
+            app.worktrees.iter().map(|w| w.branch.clone()).collect::<Vec<_>>()
+        );
+        assert_eq!(app.worktree_selected, 0);
+
+        super::handle_input(&mut app, Key::Char('j'));
+        assert_eq!(app.worktree_selected, 1, "'j' should move down");
+        super::handle_input(&mut app, Key::Down);
+        assert_eq!(app.worktree_selected, 2, "Down should move down");
+        super::handle_input(&mut app, Key::Char('k'));
+        assert_eq!(app.worktree_selected, 1, "'k' should move up");
+        super::handle_input(&mut app, Key::Up);
+        assert_eq!(app.worktree_selected, 0, "Up should move up");
+
+        std::env::set_current_dir(prev_dir).unwrap();
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
 }
