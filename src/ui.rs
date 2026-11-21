@@ -463,7 +463,11 @@ fn render_worktree_graph(frame: &mut Frame, app: &App, area: Rect) {
 fn render_worktree_cards(frame: &mut Frame, app: &App, area: Rect) {
     let colors = &app.colors;
     let block = Block::default()
-        .title(" Worktrees ")
+        .title(if app.worktrees.is_empty() {
+            " Worktrees ".to_string()
+        } else {
+            format!(" Worktrees ({}/{}) ", app.worktree_selected + 1, app.worktrees.len())
+        })
         .borders(Borders::ALL)
         .border_style(Style::default().fg(hex_color(&colors.detail_border)))
         .style(Style::default().bg(hex_color(&colors.list_bg)));
