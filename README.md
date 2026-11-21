@@ -46,7 +46,6 @@ tuit
 | `↑` / `k` | Move cursor up |
 | `↓` / `j` | Move cursor down |
 | `Enter` | Open detail for the selected commit |
-| `h` | Open the selected commit in hunk |
 | `q` | Quit tuit |
 | `?` | Open help overlay |
 
@@ -59,7 +58,6 @@ tuit
 | `Ctrl+f` / `PageDown` | Scroll down one page |
 | `Ctrl+b` / `PageUp` | Scroll up one page |
 | `Esc` | Close detail and return to list |
-| `h` | Open the viewed commit in hunk |
 | `?` | Open help overlay |
 
 ### Display
