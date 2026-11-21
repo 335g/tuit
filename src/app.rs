@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crate::config::{self, Config};
-use crate::git::{self, Commit};
+use crate::git::{self, Commit, Worktree, WorktreeGraph};
 
 /// Possible screens the application can be in.
 #[derive(Clone, Debug, PartialEq)]
@@ -14,6 +14,8 @@ pub enum Screen {
     List,
     /// Commit detail overlay.
     Detail,
+    /// Worktree dashboard (topology graph + per-worktree cards).
+    Worktrees,
     /// Error screen with a message.
     Error(String),
     /// Modal alert that requires user acknowledgment.
@@ -71,6 +73,11 @@ pub struct App {
     /// Numeric prefix accumulated for movement commands (e.g. `10` then `j`).
     /// Reset to `None` after every non-digit action.
     pub pending_count: Option<usize>,
+
+    // ── Worktree dashboard state ────────────────────────────────
+    pub worktrees: Vec<Worktree>,
+    pub worktree_selected: usize,
+    pub worktree_graph: WorktreeGraph,
 }
 
 impl App {
@@ -103,6 +110,9 @@ impl App {
             // Initialise to the past so the first poll always runs.
             last_poll_time: Instant::now() - Duration::from_millis(config.poll_interval_ms + 1),
             repo_path,
+            worktrees: Vec::new(),
+            worktree_selected: 0,
+            worktree_graph: WorktreeGraph { lines: Vec::new() },
         }
     }
 
@@ -241,6 +251,11 @@ impl App {
             }
 
             self.replace_commits(new_commits);
+        }
+
+        // Keep the worktree dashboard live while it is visible.
+        if matches!(self.screen, Screen::Worktrees) {
+            self.refresh_worktrees();
         }
     }
 
@@ -412,6 +427,10 @@ impl App {
         match &self.screen {
             Screen::List => self.commits.get(self.selected_index).map(|c| c.oid.clone()),
             Screen::Detail => self.selected_commit.as_ref().map(|c| c.oid.clone()),
+            Screen::Worktrees => self
+                .worktrees
+                .get(self.worktree_selected)
+                .and_then(|w| if w.head_oid.is_empty() { None } else { Some(w.head_oid.clone()) }),
             _ => None,
         }
     }
@@ -471,6 +490,54 @@ impl App {
     pub fn error_dismiss(&mut self) {
         if matches!(self.screen, Screen::Error(_)) {
             self.quit();
+        }
+    }
+
+    // ── Worktree dashboard ──────────────────────────────────────
+
+    /// (Re)load the worktree list and topology graph. Leaves previous data
+    /// intact and does not change screens on failure.
+    pub fn refresh_worktrees(&mut self) {
+        if let Ok((worktrees, graph)) = git::load_worktrees(&self.repo_path) {
+            self.worktrees = worktrees;
+            self.worktree_graph = graph;
+            if self.worktree_selected >= self.worktrees.len() {
+                self.worktree_selected = 0;
+            }
+        }
+    }
+
+    /// Switch to the worktree dashboard.
+    pub fn open_worktrees(&mut self) {
+        self.refresh_worktrees();
+        self.screen = Screen::Worktrees;
+        self.worktree_selected = 0;
+        self.selected_commit = None;
+        self.detail_scroll.set(0);
+    }
+
+    /// Return from the worktree dashboard to the commit list.
+    pub fn close_worktrees(&mut self) {
+        if self.screen == Screen::Worktrees {
+            self.screen = Screen::List;
+        }
+    }
+
+    /// Move the worktree selection up.
+    pub fn navigate_worktree_up(&mut self) {
+        if self.screen == Screen::Worktrees && !self.worktrees.is_empty() {
+            if self.worktree_selected > 0 {
+                self.worktree_selected -= 1;
+            }
+        }
+    }
+
+    /// Move the worktree selection down.
+    pub fn navigate_worktree_down(&mut self) {
+        if self.screen == Screen::Worktrees && !self.worktrees.is_empty() {
+            if self.worktree_selected < self.worktrees.len().saturating_sub(1) {
+                self.worktree_selected += 1;
+            }
         }
     }
 
