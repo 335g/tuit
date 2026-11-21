@@ -1,6 +1,5 @@
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -15,7 +14,7 @@ use crossterm::terminal::{
 use ratatui::Terminal;
 use ratatui::backend::{Backend, CrosstermBackend};
 
-use crate::app::{App, HunkLaunch, HunkOutcome, Screen};
+use crate::app::{App, Screen};
 
 /// Simplified input event for the application.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -90,11 +89,6 @@ fn main() -> Result<()> {
         if poll(poll_interval)? {
             if let Some(key) = read_key()? {
                 handle_input(&mut app, key);
-                if drain_hunk_launch(&mut app, &mut launch_hunk) {
-                    // The alternate screen was handed to hunk and back;
-                    // force a full repaint.
-                    let _ = terminal.clear();
-                }
             }
         }
 
@@ -166,7 +160,6 @@ pub fn run_app<B: Backend>(
     terminal: &mut Terminal<B>,
     events: impl Iterator<Item = Key>,
     repo_path: PathBuf,
-    launcher: &mut dyn FnMut(&Path, &HunkLaunch) -> HunkOutcome,
 ) -> Result<()>
 where
     <B as Backend>::Error: Send + Sync + 'static,
@@ -192,7 +185,6 @@ where
     // 3. Event loop.
     for key in events {
         handle_input(&mut app, key);
-        drain_hunk_launch(&mut app, launcher);
 
         // Draw current state.
         terminal.draw(|frame| {
@@ -218,41 +210,6 @@ pub fn handle_input(app: &mut App, key: Key) {
     if app.show_help {
         match key {
             Key::Char('?') | Key::Esc => app.show_help = false,
-            _ => {}
-        }
-        return;
-    }
-
-    // File selection overlay intercepts its own keys.
-    if app.file_selection.is_some() {
-        match key {
-            Key::Up | Key::Char('k') => {
-                if let Some(ref mut fs) = app.file_selection {
-                    fs.navigate_up();
-                }
-            }
-            Key::Down | Key::Char('j') => {
-                if let Some(ref mut fs) = app.file_selection {
-                    fs.navigate_down();
-                }
-            }
-            Key::Char(' ') => {
-                if let Some(ref mut fs) = app.file_selection {
-                    fs.toggle_current();
-                }
-            }
-            Key::Char('a') => {
-                if let Some(ref mut fs) = app.file_selection {
-                    fs.select_all();
-                }
-            }
-            Key::Char('n') => {
-                if let Some(ref mut fs) = app.file_selection {
-                    fs.select_none();
-                }
-            }
-            Key::Enter => app.confirm_file_selection(),
-            Key::Esc => app.close_file_selection(),
             _ => {}
         }
         return;
@@ -297,15 +254,7 @@ pub fn handle_input(app: &mut App, key: Key) {
                 Key::Ctrl('b') | Key::PageUp => app.navigate_page_up(),
                 Key::Enter => app.select_commit(),
                 Key::Char('c') => copy_commit_hash(app),
-                Key::Char('h') => app.open_in_hunk(),
-                Key::Char('v') => app.toggle_range_start(),
-                Key::Esc => app.clear_range(),
-                Key::Char('f') => app.open_file_selection(),
-                Key::Char('q') => {
-                    if app.range_start.is_none() {
-                        app.quit();
-                    }
-                },
+                Key::Char('q') => app.quit(),
                 Key::MouseClick(row) => select_commit_at_row(app, row),
                 _ => {}
             }
@@ -317,8 +266,6 @@ pub fn handle_input(app: &mut App, key: Key) {
             Key::Ctrl('f') | Key::PageDown => app.scroll_detail_page_down(),
             Key::Ctrl('b') | Key::PageUp => app.scroll_detail_page_up(),
             Key::Char('c') => copy_commit_hash(app),
-            Key::Char('h') => app.open_in_hunk(),
-            Key::Char('f') => app.open_file_selection(),
             _ => {}
         },
         Screen::Error(_) => match key {
@@ -332,78 +279,6 @@ pub fn handle_input(app: &mut App, key: Key) {
         Screen::Loading => {
             // Ignore all input while loading.
         }
-    }
-}
-
-/// Execute a pending Open in Hunk launch, if any, and feed the outcome
-/// back into the app. Returns `true` when a launch happened, so the caller
-/// can force a full repaint after the TUI resumes.
-fn drain_hunk_launch(
-    app: &mut App,
-    launcher: &mut dyn FnMut(&Path, &HunkLaunch) -> HunkOutcome,
-) -> bool {
-    match app.pending_hunk_launch.take() {
-        Some(launch) => {
-            let outcome = launcher(&app.repo_path, &launch);
-            app.on_hunk_finished(outcome);
-            true
-        }
-        None => false,
-    }
-}
-
-/// Suspend the TUI, run hunk in the foreground, and resume.
-/// The child process inherits the terminal, so hunk takes over the full
-/// screen until it exits.
-///
-/// Dispatches either `hunk show <oid>` (single commit) or
-/// `hunk diff <older>..<newer>` (range) based on the launch spec.
-fn launch_hunk(repo_path: &Path, launch: &HunkLaunch) -> HunkOutcome {
-    let _ = disable_raw_mode();
-    let _ = io::stdout().execute(event::DisableMouseCapture);
-    let _ = io::stdout().execute(LeaveAlternateScreen);
-
-    let status = match launch {
-        HunkLaunch::ShowCommit(oid) => Command::new("hunk")
-            .arg("show")
-            .arg(oid)
-            .current_dir(repo_path)
-            .status(),
-        HunkLaunch::ShowCommitFiltered(oid, paths) => {
-            let mut cmd = Command::new("hunk");
-            cmd.arg("show").arg(oid).arg("--");
-            for p in paths {
-                cmd.arg(p);
-            }
-            cmd.current_dir(repo_path).status()
-        }
-        HunkLaunch::ShowRange(older, newer) => {
-            let range = format!("{}..{}", older, newer);
-            Command::new("hunk")
-                .arg("diff")
-                .arg(&range)
-                .current_dir(repo_path)
-                .status()
-        }
-        HunkLaunch::ShowRangeFiltered(older, newer, paths) => {
-            let range = format!("{}..{}", older, newer);
-            let mut cmd = Command::new("hunk");
-            cmd.arg("diff").arg(&range).arg("--");
-            for p in paths {
-                cmd.arg(p);
-            }
-            cmd.current_dir(repo_path).status()
-        }
-    };
-
-    let _ = enable_raw_mode();
-    let _ = io::stdout().execute(EnterAlternateScreen);
-    let _ = io::stdout().execute(event::EnableMouseCapture);
-
-    match status {
-        Ok(s) if s.success() => HunkOutcome::Success,
-        Ok(s) => HunkOutcome::Failed(format!("hunk exited with {s}")),
-        Err(e) => HunkOutcome::Failed(format!("Failed to launch hunk: {e}")),
     }
 }
 
