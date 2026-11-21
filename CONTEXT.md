@@ -49,3 +49,18 @@ The duration (in milliseconds) that a footer notification is displayed before au
 **Copy to Clipboard**:
 The action of copying a commit's full 40-character OID hex string to the system clipboard, triggered by pressing `c` in either the Commit List or the Commit Detail screen. Uses the system-native clipboard API via the `arboard` crate.
 _Avoid_: Short hash copy, abbreviated copy
+
+**Worktree Dashboard**:
+A screen (`w` from the Commit List) showing every worktree of the repository — the main worktree plus all linked worktrees created with `git worktree add`. The left pane renders a `git log --graph`-style topology of how each branch diverges from the base; the right pane lists one card per worktree.
+
+**Worktree**:
+A checkout of the repository at a specific branch. Each has a name (`"main"` or the linked-worktree folder name), a checkout path, a checked-out branch, and a HEAD commit. Summarized as ahead/behind counts relative to the base, a 14-day commit-activity histogram, and a dirty flag.
+
+**Topology Graph**:
+The `git log --graph`-style lane diagram in the Worktree Dashboard. Built from a bounded multi-head revision walk (up to 120 commits), assigned columns with a simplified git-like algorithm, and rendered with Unicode box-drawing connectors (`●` `│` `╲` `╱`).
+
+**Base (ahead/behind base)**:
+The reference HEAD for ahead/behind counts: the main worktree's HEAD, falling back to the HEAD of the repository tuit was opened at when the main repository is bare.
+
+**Ahead / Behind**:
+Commits reachable from a worktree's HEAD but not the base (ahead), and vice versa (behind), computed via the merge base.

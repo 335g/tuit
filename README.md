@@ -46,6 +46,7 @@ tuit
 | `↑` / `k` | Move cursor up |
 | `↓` / `j` | Move cursor down |
 | `Enter` | Open detail for the selected commit |
+| `w` | Open the worktree dashboard |
 | `q` | Quit tuit |
 | `?` | Open help overlay |
 
@@ -60,11 +61,24 @@ tuit
 | `Esc` | Close detail and return to list |
 | `?` | Open help overlay |
 
+#### Worktree dashboard
+
+| Key | Action |
+|-----|--------|
+| `↑` / `k` | Move cursor up |
+| `↓` / `j` | Move cursor down |
+| `c` | Copy the selected worktree's HEAD hash to clipboard |
+| `r` | Reload worktrees |
+| `w` / `Esc` | Back to commit list |
+| `q` | Quit tuit |
+| `?` | Open help overlay |
+
 ### Display
 
 - **Commit list**: Shows abbreviated hash (7 characters), commit subject, author name, and relative timestamp (`3d ago` / `2h ago` etc.) for each commit.
 - **Commit detail**: Shows the selected commit's hash, author, date, full body, and a colorized unified diff. Added lines, deleted lines, and context lines are each color-coded.
 - **Live sync**: Polls the Git repository every 2 seconds while running, automatically detecting new commits and HEAD changes. When HEAD moves, the footer turns solid blue with a centered notification. The commit list is automatically reloaded.
+- **Worktree dashboard** (`w`): Shows every worktree of the repository (the main worktree plus all linked ones). The left pane draws a `git log --graph`-style topology of how each branch diverges from the base; the right pane lists one card per worktree with ahead/behind counts (relative to the main worktree's HEAD), a commit-activity sparkline over the last 14 days, and a dirty marker for uncommitted changes.
 - **Error screen**: Shows an error message when run outside a Git repository, inside an empty repository, or against a broken `.git` directory.
 
 ## Configuration
