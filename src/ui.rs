@@ -82,11 +82,6 @@ fn fg(hex: &str) -> Style {
     Style::default().fg(hex_color(hex))
 }
 
-/// Background colour for range-highlighted rows (between the
-/// range-start mark and the cursor), when neither the selected
-/// nor the range-start row itself.  Catppuccin Mocha surface1.
-const RANGE_BG: &str = "#45475a";
-
 /// Main render dispatch.
 pub fn render(frame: &mut Frame, app: &App) {
     let area = frame.area();
@@ -117,11 +112,6 @@ pub fn render(frame: &mut Frame, app: &App) {
     // Transient footer notification.
     if app.notification.is_some() {
         render_notification(frame, app);
-    }
-
-    // File selection overlay (on top of everything except help).
-    if app.file_selection.is_some() {
-        render_file_select_overlay(frame, app);
     }
 
     // Help overlay on top of everything else.
@@ -202,12 +192,6 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
     app.list_scroll.set(scroll);
     app.list_content_height.set(viewport_height);
 
-    // ── Determine range-highlight bounds ────────────────────────
-    let (range_lo, range_hi) = app.range_start.map_or((0, 0), |start| {
-        (start.min(app.selected_index), start.max(app.selected_index))
-    });
-    let has_range = app.range_start.is_some();
-
     // Build list rows
     let rows: Vec<Line> = app
         .commits
@@ -215,7 +199,6 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
         .enumerate()
         .map(|(i, commit)| {
             let is_selected = i == app.selected_index;
-            let in_range = has_range && i >= range_lo && i <= range_hi;
             let cursor = if is_selected {
                 "❯"
             } else {
@@ -306,45 +289,6 @@ pub fn render_commit_list(frame: &mut Frame, app: &App, grayed_out: bool) {
                 spans.push(Span::styled(" ", base));
                 spans.push(Span::styled(format!(" {}", date_str), base));
                 Line::from(spans)
-            } else if in_range && !grayed_out {
-                // Range-highlighted row (non-selected)
-                let range_bg = hex_color(RANGE_BG);
-                let base = Style::default().bg(range_bg);
-                let mut spans = vec![Span::styled(format!(" {}", cursor), base)];
-                if show_hash {
-                    spans.push(Span::styled(
-                        format!(" {} ", commit.hash),
-                        base.fg(hex_color(&colors.hash)),
-                    ));
-                }
-                let msg_style = base.fg(hex_color(&colors.message));
-                spans.push(Span::styled(" ", msg_style));
-                if let Some((cc_type, cc_scope, cc_breaking, cc_desc)) = parse_cc(&msg) {
-                    let type_style = base
-                        .fg(hex_color(cc_type_color(&colors, cc_type)))
-                        .add_modifier(Modifier::BOLD);
-                    spans.push(Span::styled(cc_type.to_string(), type_style));
-                    if let Some(scope) = cc_scope {
-                        spans.push(Span::styled(format!("({})", scope), base.fg(Color::DarkGray)));
-                    }
-                    if cc_breaking {
-                        spans.push(Span::styled("!", base.fg(hex_color(&colors.diff_del))));
-                    }
-                    let rest = if cc_desc.is_empty() {
-                        String::new()
-                    } else {
-                        format!(": {}", cc_desc)
-                    };
-                    spans.push(Span::styled(rest, msg_style));
-                } else {
-                    spans.push(Span::styled(msg.clone(), msg_style));
-                }
-                spans.push(Span::styled(" ", msg_style));
-                spans.push(Span::styled(
-                    format!(" {}", date_str),
-                    base.fg(hex_color(&colors.date)),
-                ));
-                Line::from(spans)
             } else {
                 let mut spans = vec![Span::styled(format!(" {}", cursor), muted_fg)];
                 if show_hash {
@@ -431,13 +375,7 @@ fn render_footer(frame: &mut Frame, app: &App, area: Rect, grayed_out: bool) {
         (" NORM ", "#6c7086", Color::Black)
     } else {
         let (label, bg) = match &app.screen {
-            Screen::List => {
-                if app.range_start.is_some() {
-                    (" SEL ", "#fab387")
-                } else {
-                    (" NORM ", "#89b4fa")
-                }
-            }
+            Screen::List => (" NORM ", "#89b4fa"),
             Screen::Detail => (" DETAIL ", "#a6e3a1"),
             Screen::Alert(_) => (" ALERT ", "#f38ba8"),
             Screen::Error(_) => (" ERROR ", "#f38ba8"),
@@ -650,110 +588,6 @@ pub fn render_detail_overlay(frame: &mut Frame, app: &App) {
     frame.render_widget(hint, layout[3]);
 }
 
-/// Render the file-selection overlay.
-fn render_file_select_overlay(frame: &mut Frame, app: &App) {
-    let colors = &app.colors;
-    let area = frame.area();
-    let fs = match &app.file_selection {
-        Some(fs) => fs,
-        None => return,
-    };
-
-    // Dim background
-    let dim_block = Block::default().style(Style::default().bg(Color::Black));
-    frame.render_widget(dim_block, area);
-
-    // Popup: ~70 % wide, ~85 % tall
-    let popup_w = (area.width as f64 * 0.7).min(60.0).max(40.0) as u16;
-    let popup_h = (area.height as f64 * 0.85).min(30.0).max(10.0) as u16;
-    let popup_x = (area.width - popup_w) / 2;
-    let popup_y = (area.height - popup_h) / 2;
-
-    let popup_area = Rect {
-        x: popup_x,
-        y: popup_y,
-        width: popup_w,
-        height: popup_h,
-    };
-
-    frame.render_widget(Clear, popup_area);
-
-    let short_oid = fs.commit_oid.chars().take(7).collect::<String>();
-    let border_color = hex_color(&colors.detail_border);
-    let bg_color = hex_color(&colors.detail_bg);
-    let overlay = Block::default()
-        .title(format!(" Select files — {} ", short_oid))
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(border_color))
-        .style(Style::default().bg(bg_color));
-    let inner = overlay.inner(popup_area);
-    frame.render_widget(overlay, popup_area);
-
-    // Content layout: file list + footer hint
-    let layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1)])
-        .split(inner);
-
-    // ── File list ────────────────────────────────────────────────
-    let cursor_bg = hex_color(&colors.cursor_bg);
-    let cursor_fg = hex_color(&colors.cursor_fg);
-    let value_style = Style::default().fg(hex_color(&colors.detail_value));
-
-    let total = fs.files.len();
-    let visible = layout[0].height as usize;
-
-    // Auto-scroll: keep cursor visible
-    let mut scroll = fs.scroll.get();
-    if fs.cursor < scroll {
-        scroll = fs.cursor;
-    }
-    if visible > 0 && fs.cursor >= scroll + visible {
-        scroll = fs.cursor.saturating_add(1).saturating_sub(visible);
-    }
-    let max_scroll = total.saturating_sub(visible);
-    scroll = scroll.min(max_scroll);
-    fs.scroll.set(scroll);
-
-    let mut lines: Vec<Line> = Vec::new();
-    let display_range = scroll..(scroll + visible).min(total);
-    for i in display_range {
-        let is_cursor = i == fs.cursor;
-        let is_sel = fs.selected.contains(&i);
-        let prefix = if is_sel { "[x]" } else { "[ ]" };
-        let text = format!(" {} {}", prefix, fs.files[i]);
-
-        if is_cursor {
-            lines.push(Line::from(Span::styled(
-                text,
-                Style::default().bg(cursor_bg).fg(cursor_fg),
-            )));
-        } else {
-            lines.push(Line::from(Span::styled(text, value_style)));
-        }
-    }
-
-    let file_list = Paragraph::new(Text::from(lines)).style(Style::default().bg(bg_color));
-    frame.render_widget(file_list, layout[0]);
-
-    // ── Footer hint ──────────────────────────────────────────────
-    let sel = fs.selected.len();
-    let hint = if sel == total {
-        " Space: toggle   a: all   n: none   Enter: hunk (all)   Esc: cancel "
-    } else if sel == 0 {
-        " Space: toggle   a: all   n: none   (select at least one file) "
-    } else {
-        " Space: toggle   a: all   n: none   Enter: hunk (filtered)   Esc: cancel "
-    };
-    let hint_para = Paragraph::new(Line::from(Span::styled(
-        hint,
-        Style::default().fg(Color::DarkGray),
-    )))
-    .alignment(Alignment::Center)
-    .style(Style::default().bg(bg_color));
-    frame.render_widget(hint_para, layout[1]);
-}
-
 /// Render the keybindings help popup overlay.
 fn render_help_overlay(frame: &mut Frame, app: &App) {
     let colors = &app.colors;
@@ -809,9 +643,6 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
                 ("Enter", "Show commit details"),
                 ("c", "Copy commit hash to clipboard"),
                 ("r", "Reload from current branch"),
-                ("v", "Mark/unmark range start"),
-                ("f", "Select files for hunk"),
-                ("h", "Open commit/range in hunk"),
                 ("q", "Quit tuit"),
             ],
         ),
@@ -823,8 +654,6 @@ fn render_help_overlay(frame: &mut Frame, app: &App) {
                 ("Ctrl+f", "Scroll down one page"),
                 ("Ctrl+b", "Scroll up one page"),
                 ("c", "Copy commit hash to clipboard"),
-                ("f", "Select files for hunk"),
-                ("h", "Open commit in hunk for review"),
                 ("r", "Reload from current branch"),
                 ("Esc", "Close detail view"),
             ],
