@@ -227,8 +227,6 @@ pub fn handle_input(app: &mut App, key: Key) {
         return;
     }
 
-
-
     match &app.screen {
         Screen::List => {
             // Numeric prefix for j/k movement
@@ -1017,3 +1015,4 @@ mod e2e_tests {
         std::env::set_current_dir(prev_dir).unwrap();
     }
 
+}
