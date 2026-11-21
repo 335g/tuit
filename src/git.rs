@@ -96,7 +96,7 @@ pub fn load_commits_from(repo: &gix::Repository) -> Result<Vec<Commit>> {
         let short_hash = oid_hex.chars().take(7).collect::<String>();
 
         let msg_ref = commit_obj.message().context("Failed to decode message")?;
-        let subject = msg_ref.title.to_string();
+        let subject = msg_ref.title.to_string().trim_end().to_string();
 
         let author = commit_obj.author().context("Failed to decode author")?;
         let author_name = author.name.to_string();
@@ -523,7 +523,7 @@ fn head_label(repo: &gix::Repository, oid: ObjectId) -> (String, String) {
             let hash = oid.to_hex().to_string().chars().take(7).collect::<String>();
             let subject = c
                 .message()
-                .map(|m| m.title.to_string())
+                .map(|m| m.title.to_string().trim_end().to_string())
                 .unwrap_or_default();
             (hash, subject)
         }
@@ -569,9 +569,8 @@ fn count_reachable(repo: &gix::Repository, head: ObjectId) -> Result<usize> {
 
 /// Commits reachable from `head` without crossing `exclude` (the merge base).
 ///
-/// shortcut: `with_boundary` sets a cutoff sort, so commits whose committer
-/// time is older than `exclude` are dropped; rebased branches with skewed
-/// timestamps may undercount.
+/// shortcut: walks the whole ahead-chain once per call; fine up to a few
+/// thousand commits, revisit with commit-graph caching if polling gets slow.
 fn count_reachable_excluding(
     repo: &gix::Repository,
     head: ObjectId,
@@ -667,7 +666,7 @@ fn build_graph(repo: &gix::Repository, worktrees: &[Worktree]) -> Result<Worktre
         let time = commit_obj.committer().map(|s| s.seconds()).unwrap_or(0);
         let subject = commit_obj
             .message()
-            .map(|m| m.title.to_string())
+            .map(|m| m.title.to_string().trim_end().to_string())
             .unwrap_or_default();
         nodes.insert(
             oid,
@@ -973,9 +972,6 @@ mod tests {
             .map(|l| l.text.clone())
             .collect::<Vec<_>>()
             .join("\n");
-        for (i, l) in graph.lines.iter().enumerate() {
-            eprintln!("[{i}] {:?} len={}", l.text, l.text.len());
-        }
         assert!(all_text.contains("feat-a"), "graph:\n{all_text}");
         assert!(all_text.contains("feat-b"), "graph:\n{all_text}");
         assert!(all_text.contains("feat a 2"), "graph:\n{all_text}");
