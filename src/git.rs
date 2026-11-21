@@ -979,4 +979,64 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&base);
     }
+
+    #[test]
+    fn worktrees_from_bare_parent() {
+        use std::process::Command;
+
+        let base = std::env::temp_dir().join("tuit-bare-parent");
+        let bare = base.join("repo.git");
+        let wt1 = base.join("wt1");
+        let wt2 = base.join("wt2");
+        let _ = std::fs::remove_dir_all(&base);
+
+        // Seed repo with one commit, then clone --bare.
+        let seed = base.join("seed");
+        std::fs::create_dir_all(&seed).unwrap();
+        Command::new("git")
+            .args(["init", "--initial-branch=main"])
+            .arg(&seed)
+            .status()
+            .unwrap();
+        std::fs::write(seed.join("f.txt"), "x").unwrap();
+        Command::new("git")
+            .args(["-C", &seed.to_string_lossy(), "add", "."])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["-C", &seed.to_string_lossy(), "commit", "-m", "seed"])
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "t@e.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "t@e.com")
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["clone", "--bare"])
+            .arg(&seed)
+            .arg(&bare)
+            .status()
+            .unwrap();
+
+        // Two worktrees from the bare parent.
+        Command::new("git")
+            .args(["-C", &bare.to_string_lossy(), "worktree", "add", "-b", "wt1"])
+            .arg(&wt1)
+            .status()
+            .unwrap();
+        Command::new("git")
+            .args(["-C", &bare.to_string_lossy(), "worktree", "add", "-b", "wt2"])
+            .arg(&wt2)
+            .status()
+            .unwrap();
+
+        let (worktrees, _graph) = load_worktrees(&wt1).unwrap();
+        let branches: Vec<&str> = worktrees.iter().map(|w| w.branch.as_str()).collect();
+        assert!(
+            branches.contains(&"wt1") && branches.contains(&"wt2"),
+            "expected wt1 and wt2, got {branches:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }
