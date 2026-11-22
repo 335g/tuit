@@ -128,7 +128,6 @@ export default class TuitView extends View {
       .gap(8)
       .items_center()
       .flex_shrink_0()
-      .child(text(colors.hash).child(c.hash))
       .child(
         h_flex()
           .flex_1()
