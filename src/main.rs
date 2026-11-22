@@ -154,6 +154,8 @@ fn read_key() -> Result<Option<Key>> {
 /// Print the commit list as JSON, for the herdr view (`herdr-app` mods call this).
 fn print_json(repo_path: &Path, limit: usize) -> Result<()> {
     let repo = git::open_repo(repo_path)?;
+    let mut commits = git::load_commits_from(&repo)?;
+    commits.truncate(limit);
     let root = repo
         .workdir()
         .map(|p| p.display().to_string())
@@ -174,15 +176,12 @@ fn print_json(repo_path: &Path, limit: usize) -> Result<()> {
         "test": colors.cc_type_test.clone(),
         "chore": colors.cc_type_chore.clone(),
     });
-    let head = git::current_head_oid(&repo).unwrap_or_default();
-    let history = git::load_history(repo_path, limit)?;
     let out = serde_json::json!({
         "root": root,
         "branch": branch,
-        "head": head,
         "colors": colors,
         "cc": cc,
-        "history": history,
+        "commits": commits,
     });
     println!("{}", serde_json::to_string(&out)?);
     Ok(())

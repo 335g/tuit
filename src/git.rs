@@ -637,44 +637,21 @@ struct GraphNode {
     parents: Vec<ObjectId>,
     time: i64,
     subject: String,
-    author: String,
-    date: String,
     refs: Vec<String>,
 }
 
-/// One row of the topology graph: the lane cells for a commit, plus what the
-/// row shows about it.
-#[derive(Clone, Debug, Serialize)]
-pub struct GraphRow {
-    /// Full OID hex string (40 characters).
-    pub oid: String,
-    /// 7-character abbreviated hash.
-    pub hash: String,
-    /// Lane cells and connectors, one character per column.
-    pub graph: String,
-    /// Branch and tag names sitting on this commit.
-    pub refs: Vec<String>,
-    /// Subject line.
-    pub message: String,
-    /// Author name.
-    pub author: String,
-    /// Relative timestamp (e.g. "3d ago").
-    pub date: String,
-}
-
-/// Assign lanes and draw connectors for every commit reachable from `tips`.
-fn graph_layout(
-    repo: &gix::Repository,
-    tips: &[ObjectId],
-    labels: &HashMap<ObjectId, Vec<String>>,
-    max: usize,
-) -> Result<Vec<GraphRow>> {
-    if tips.is_empty() {
-        return Ok(Vec::new());
+/// Build a `git log --graph`-style topology graph across all worktree heads.
+fn build_graph(repo: &gix::Repository, worktrees: &[Worktree]) -> Result<WorktreeGraph> {
+    let heads: Vec<ObjectId> = worktrees
+        .iter()
+        .filter_map(|w| w.head_oid.parse::<ObjectId>().ok())
+        .collect();
+    if heads.is_empty() {
+        return Ok(WorktreeGraph { lines: Vec::new() });
     }
 
     let walk = repo
-        .rev_walk(tips.iter().copied())
+        .rev_walk(heads.iter().copied())
         .sorting(Sorting::ByCommitTime(CommitTimeOrder::NewestFirst))
         .all()
         .context("Failed to create revision walk")?;
@@ -694,24 +671,26 @@ fn graph_layout(
             .message()
             .map(|m| m.title.to_string().trim_end().to_string())
             .unwrap_or_default();
-        let author = commit_obj
-            .author()
-            .map(|a| a.name.to_string())
-            .unwrap_or_default();
         nodes.insert(
             oid,
             GraphNode {
                 parents,
                 time,
                 subject,
-                author,
-                date: format_relative_time(time),
-                refs: labels.get(&oid).cloned().unwrap_or_default(),
+                refs: Vec::new(),
             },
         );
         order.push(oid);
-        if order.len() >= max {
+        if order.len() >= MAX_GRAPH_COMMITS {
             break;
+        }
+    }
+
+    for w in worktrees {
+        if let Ok(oid) = w.head_oid.parse::<ObjectId>() {
+            if let Some(node) = nodes.get_mut(&oid) {
+                node.refs.push(w.branch.clone());
+            }
         }
     }
 
@@ -784,7 +763,7 @@ fn graph_layout(
 
     let mut grid: Vec<Vec<char>> = vec![vec![' '; max_col + 1]; n_rows];
     for oid in &topo {
-        grid[row[oid]][col[oid]] = '\u{25cf}';
+        grid[row[oid]][col[oid]] = '●';
     }
 
     // Connectors from each commit down to its parents.
@@ -800,30 +779,27 @@ fn graph_layout(
             let cp = col[p];
             if cp == cc {
                 for r in (rc + 1)..rp {
-                    grid[r][cc] = '\u{2502}';
+                    grid[r][cc] = '│';
                 }
             } else if cp > cc {
                 if rc + 1 < n_rows {
-                    grid[rc + 1][cp] = '\u{2572}';
+                    grid[rc + 1][cp] = '╲';
                 }
                 for r in (rc + 2)..rp {
-                    grid[r][cp] = '\u{2502}';
-                }
-                if rp > rc + 1 {
-                    grid[rp - 1][cp] = '\u{2570}';
+                    grid[r][cp] = '│';
                 }
             } else {
                 for r in (rc + 1)..rp {
-                    grid[r][cc] = '\u{2502}';
+                    grid[r][cc] = '│';
                 }
                 if rp > rc + 1 {
-                    grid[rp - 1][cc] = '\u{2571}';
+                    grid[rp - 1][cc] = '╱';
                 }
             }
         }
     }
 
-    let mut rows = Vec::with_capacity(n_rows);
+    let mut lines = Vec::with_capacity(n_rows);
     for i in 0..n_rows {
         let oid = topo[i];
         let node = &nodes[&oid];
@@ -831,84 +807,28 @@ fn graph_layout(
             .iter()
             .rposition(|&ch| ch != ' ')
             .unwrap_or(col[&oid]);
-        let mut graph = String::new();
+        let mut s = String::new();
         for j in 0..=last_connector {
-            graph.push(grid[i][j]);
+            s.push(grid[i][j]);
         }
-        let hex = oid.to_hex().to_string();
-        rows.push(GraphRow {
-            hash: hex.chars().take(7).collect(),
-            oid: hex,
-            graph,
+        let hash = oid.to_hex().to_string().chars().take(7).collect::<String>();
+        let refs_str = if node.refs.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", node.refs.join(", "))
+        };
+        s.push(' ');
+        s.push_str(&hash);
+        s.push_str(&refs_str);
+        s.push(' ');
+        s.push_str(&node.subject);
+        lines.push(GraphLine {
+            text: s,
             refs: node.refs.clone(),
-            message: node.subject.clone(),
-            author: node.author.clone(),
-            date: node.date.clone(),
         });
     }
 
-    Ok(rows)
-}
-
-/// Build a `git log --graph`-style topology graph across all worktree heads.
-fn build_graph(repo: &gix::Repository, worktrees: &[Worktree]) -> Result<WorktreeGraph> {
-    let mut heads: Vec<ObjectId> = Vec::new();
-    let mut labels: HashMap<ObjectId, Vec<String>> = HashMap::new();
-    for w in worktrees {
-        if let Ok(oid) = w.head_oid.parse::<ObjectId>() {
-            heads.push(oid);
-            labels.entry(oid).or_default().push(w.branch.clone());
-        }
-    }
-    let lines = graph_layout(repo, &heads, &labels, MAX_GRAPH_COMMITS)?
-        .into_iter()
-        .map(|r| {
-            let refs_str = if r.refs.is_empty() {
-                String::new()
-            } else {
-                format!(" ({})", r.refs.join(", "))
-            };
-            GraphLine {
-                text: format!("{} {}{} {}", r.graph, r.hash, refs_str, r.message),
-                refs: r.refs,
-            }
-        })
-        .collect();
     Ok(WorktreeGraph { lines })
-}
-
-/// Every commit reachable from any branch, remote branch or tag, newest first,
-/// with its lane cells. Backs `tuit --json`, which the herdr view renders.
-pub fn load_history(path: &Path, limit: usize) -> Result<Vec<GraphRow>> {
-    let repo = open_repo(path)?;
-    let mut labels: HashMap<ObjectId, Vec<String>> = HashMap::new();
-    for reference in repo.references()?.all()? {
-        let Ok(mut reference) = reference else {
-            continue;
-        };
-        let name = reference.name().as_bstr().to_string();
-        let short = if let Some(s) = name.strip_prefix("refs/heads/") {
-            s.to_string()
-        } else if let Some(s) = name.strip_prefix("refs/remotes/") {
-            if s.ends_with("/HEAD") {
-                continue;
-            }
-            s.to_string()
-        } else if let Some(s) = name.strip_prefix("refs/tags/") {
-            s.to_string()
-        } else {
-            continue;
-        };
-        let Ok(id) = reference.peel_to_id_in_place() else {
-            continue;
-        };
-        if !matches!(id.object().map(|o| o.kind), Ok(gix::objs::Kind::Commit)) {
-            continue;
-        }
-        labels.entry(id.detach()).or_default().push(short);
-    }
-    let tips: Vec<ObjectId> = labels.keys().copied().collect();
-    graph_layout(&repo, &tips, &labels, limit)
 }
 
 /// Topological order: children (newer) before parents (older), ties by commit
