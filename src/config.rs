@@ -2,10 +2,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Resolved color palette used throughout the UI.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Colors {
     pub cursor_bg: String,
     pub cursor_fg: String,
