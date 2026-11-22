@@ -157,7 +157,7 @@ fn print_json(repo_path: &Path, limit: usize) -> Result<()> {
     let mut commits = git::load_commits_from(&repo)?;
     commits.truncate(limit);
     let root = repo
-        .work_dir()
+        .workdir()
         .map(|p| p.display().to_string())
         .unwrap_or_default();
     let branch = git::current_branch(&repo).unwrap_or_else(|_| "HEAD".to_string());
