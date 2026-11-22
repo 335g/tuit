@@ -15,6 +15,22 @@ function folder() {
   return pane?.cwd || f?.cwd || spaces().find((s) => s.active)?.folder || home();
 }
 
+// Conventional-commit split, as tuit's ui.rs parses it: type(scope)!: description
+function conventional(message) {
+  const colon = message.indexOf(":");
+  if (colon < 0) return null;
+  const prefix = message.slice(0, colon).trimEnd();
+  const desc = message.slice(colon + 1).trimStart();
+  const breaking = prefix.endsWith("!");
+  const clean = breaking ? prefix.slice(0, -1) : prefix;
+  const open = clean.indexOf("(");
+  const close = clean.lastIndexOf(")");
+  const scoped = open >= 0 && close > open;
+  const type = (scoped ? clean.slice(0, open) : clean).trim();
+  if (!type) return null;
+  return { type, scope: scoped ? clean.slice(open + 1, close).trim() : null, breaking, desc };
+}
+
 export default class TuitView extends View {
   init(_props, cx) {
     this.cwd = null;
@@ -88,19 +104,39 @@ export default class TuitView extends View {
               : v_flex()
                   .size_full()
                   .overflow_y_scrollbar()
-                  .children(commits.map((c) => this.row(c, t))),
+                  .children(commits.map((c) => this.row(c))),
       );
   }
 
-  row(c, t) {
+  // tuit's row colours, from `tuit --json` (its config.toml + theme), so the
+  // pane and the TUI look the same. Only the pane's background stays herdr's.
+  row(c) {
+    const colors = this.data.colors, cc = this.data.cc;
+    const parsed = conventional(c.message);
+    const text = (color) => div().text_color(color).whitespace_nowrap();
+    const parts = parsed
+      ? [
+          text(cc[parsed.type] ?? cc.chore).font_weight(700).child(parsed.type),
+          parsed.scope ? text(colors.date).child(`(${parsed.scope})`) : null,
+          parsed.breaking ? text(colors.diff_del).child("!") : null,
+          text(colors.message).child(parsed.desc ? `: ${parsed.desc}` : ""),
+        ]
+      : [text(colors.message).child(c.message)];
     return h_flex()
       .px(10)
       .py(2)
       .gap(8)
       .items_center()
       .flex_shrink_0()
-      .child(div().text_color(t.dim).child(c.hash))
-      .child(div().flex_1().overflow_hidden().whitespace_nowrap().text_ellipsis().text_color(t.foreground).child(c.message))
-      .child(div().text_color(t.dim).child(c.date));
+      .child(text(colors.hash).child(c.hash))
+      .child(
+        h_flex()
+          .flex_1()
+          .overflow_hidden()
+          .whitespace_nowrap()
+          .text_ellipsis()
+          .children(parts.filter(Boolean)),
+      )
+      .child(text(colors.date).child(c.date));
   }
 }
