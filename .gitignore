@@ -8,3 +8,7 @@ apm_modules/
 .scratch
 .pi-subagents
 .agents
+
+# herdr-app mod: written by the runtime and rewritten on every load
+tuit-herdr-view/gpui-kit.d.ts
+tuit-herdr-view/jsconfig.json
