@@ -6,9 +6,10 @@ use gix::diff::Options;
 use gix::hash::ObjectId;
 use gix::revision::walk::Sorting;
 use gix::traverse::commit::simple::CommitTimeOrder;
+use serde::Serialize;
 
 /// A single commit's summary data.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Commit {
     /// 7-character abbreviated hash.
     pub hash: String,
@@ -21,8 +22,10 @@ pub struct Commit {
     /// Relative timestamp (e.g. "3d ago").
     pub date: String,
     /// Full commit body (populated lazily by load_diff).
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub body: String,
     /// Unified diff text (populated lazily by load_diff).
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub diff: String,
 }
 

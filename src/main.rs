@@ -43,6 +43,14 @@ struct Cli {
     /// Path to the Git repository to open.
     #[arg(short, long, value_name = "PATH")]
     repo: Option<PathBuf>,
+
+    /// Print the commit list as JSON and exit, without opening the TUI.
+    #[arg(long)]
+    json: bool,
+
+    /// Number of commits --json prints (default 200).
+    #[arg(long, value_name = "N", default_value_t = 200)]
+    limit: usize,
 }
 
 /// Main entry point – production mode.
@@ -55,8 +63,13 @@ fn main() -> Result<()> {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     // Validate an explicitly supplied repository path before entering the TUI.
-    if explicit_repo {
+    if explicit_repo && !cli.json {
         validate_repo_path(&repo_path)?;
+    }
+
+    if cli.json {
+        print_json(&repo_path, cli.limit)?;
+        return Ok(());
     }
 
     enable_raw_mode()?;
@@ -136,6 +149,21 @@ fn read_key() -> Result<Option<Key>> {
         }
         _ => Ok(None),
     }
+}
+
+/// Print the commit list as JSON, for the herdr view (`herdr-app` mods call this).
+fn print_json(repo_path: &Path, limit: usize) -> Result<()> {
+    let repo = git::open_repo(repo_path)?;
+    let mut commits = git::load_commits_from(&repo)?;
+    commits.truncate(limit);
+    let root = repo
+        .work_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let branch = git::current_branch(&repo).unwrap_or_else(|_| "HEAD".to_string());
+    let out = serde_json::json!({ "root": root, "branch": branch, "commits": commits });
+    println!("{}", serde_json::to_string(&out)?);
+    Ok(())
 }
 
 /// Validate that `path` exists, is a directory, and is a git repository.
