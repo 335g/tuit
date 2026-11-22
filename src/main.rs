@@ -161,7 +161,28 @@ fn print_json(repo_path: &Path, limit: usize) -> Result<()> {
         .map(|p| p.display().to_string())
         .unwrap_or_default();
     let branch = git::current_branch(&repo).unwrap_or_else(|_| "HEAD".to_string());
-    let out = serde_json::json!({ "root": root, "branch": branch, "commits": commits });
+    // The palette the TUI would use (config.toml + theme), so the herdr view
+    // colours its rows the same way instead of carrying a second copy.
+    let colors = config::load()
+        .map(|c| c.colors)
+        .unwrap_or_else(|_| config::default_colors());
+    let cc = serde_json::json!({
+        "feat": colors.cc_type_feat.clone(),
+        "fix": colors.cc_type_fix.clone(),
+        "docs": colors.cc_type_docs.clone(),
+        "style": colors.cc_type_style.clone(),
+        "refactor": colors.cc_type_refactor.clone(),
+        "perf": colors.cc_type_perf.clone(),
+        "test": colors.cc_type_test.clone(),
+        "chore": colors.cc_type_chore.clone(),
+    });
+    let out = serde_json::json!({
+        "root": root,
+        "branch": branch,
+        "colors": colors,
+        "cc": cc,
+        "commits": commits,
+    });
     println!("{}", serde_json::to_string(&out)?);
     Ok(())
 }
