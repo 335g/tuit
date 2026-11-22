@@ -4,28 +4,42 @@
     {
       "id": "json",
       "title": "Add --json/--limit to tuit (src/main.rs, src/git.rs)",
-      "status": "active",
-      "startedAt": 1795342270298
+      "status": "done",
+      "result": "tuit --json --limit N が出る（branch/root/commits）",
+      "startedAt": 1795342270298,
+      "endedAt": 1795342505962
     },
     {
       "id": "build",
       "title": "Build and verify tuit --json output",
-      "status": "pending"
+      "status": "done",
+      "result": "cargo install --path . で ~/.cargo/bin/tuit を更新済み",
+      "startedAt": 1795342505962,
+      "endedAt": 1795342505962
     },
     {
       "id": "mod",
       "title": "Create tuit-herdr-view/mod.json + main.js",
-      "status": "pending"
+      "status": "done",
+      "result": "mod.json + main.js（200件、2秒ポーリング）",
+      "startedAt": 1795342505962,
+      "endedAt": 1795342505962
     },
     {
       "id": "link",
       "title": "Symlink mod into ~/.config/herdr-app/mods and pass herdr-app check",
-      "status": "pending"
+      "status": "done",
+      "result": "シンボリックリンク＋check passed",
+      "startedAt": 1795342505962,
+      "endedAt": 1795342505962
     },
     {
       "id": "dock",
       "title": "Replace bottom-filler in layouts/mine.json with tuit block",
-      "status": "pending"
+      "status": "done",
+      "result": "layout.show --id tuit-panel が通る（ノード存在確認）",
+      "startedAt": 1795342505962,
+      "endedAt": 1795342505962
     }
   ]
 }
