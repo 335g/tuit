@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "json",
+      "title": "Add --json/--limit to tuit (src/main.rs, src/git.rs)",
+      "status": "active",
+      "startedAt": 1795342270298
+    },
+    {
+      "id": "build",
+      "title": "Build and verify tuit --json output",
+      "status": "pending"
+    },
+    {
+      "id": "mod",
+      "title": "Create tuit-herdr-view/mod.json + main.js",
+      "status": "pending"
+    },
+    {
+      "id": "link",
+      "title": "Symlink mod into ~/.config/herdr-app/mods and pass herdr-app check",
+      "status": "pending"
+    },
+    {
+      "id": "dock",
+      "title": "Replace bottom-filler in layouts/mine.json with tuit block",
+      "status": "pending"
+    }
+  ]
+}
