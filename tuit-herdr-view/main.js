@@ -1,10 +1,9 @@
-// tuit's commit graph, in a Herdr pane: every branch's history of the folder
-// you are in, as colored lanes with branch labels.
-// The rows come from the tuit binary itself (`tuit --json`), so the pane shows
-// exactly what the TUI shows: same gix walk, same lanes, same relative dates.
+// tuit's commit list, in a Herdr pane: the git log of the folder you are in.
+// The list comes from the tuit binary itself (`tuit --json`), so the pane shows
+// exactly what the TUI shows: same gix walk, same relative dates.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, focused, panes, spaces, home, theme, settings } from "herdr";
+import { exec, focused, panes, spaces, home, theme } from "herdr";
 
 const LIMIT = 200;
 const POLL_MS = 2000; // tuit's own poll interval
@@ -76,9 +75,7 @@ export default class TuitView extends View {
 
   render() {
     const t = theme();
-    const rows = this.data?.history ?? [];
-    // One character per lane: the graph only lines up in a monospaced font.
-    const width = rows.reduce((n, r) => Math.max(n, r.graph.length), 0);
+    const commits = this.data?.commits ?? [];
     const note = (text, color) => div().p(10).text_color(color).child(text);
     return v_flex()
       .size_full()
@@ -93,7 +90,7 @@ export default class TuitView extends View {
           .border_b(1)
           .border_color(t.border)
           .child(div().text_color(t.accent).child(this.data?.branch ?? ""))
-          .child(div().text_color(t.dim).child(this.data ? String(rows.length) : "")),
+          .child(div().text_color(t.dim).child(this.data ? String(commits.length) : "")),
       )
       .child(
         this.error
@@ -102,20 +99,20 @@ export default class TuitView extends View {
               .child(div().px(10).text_color(t.dim).child("tuit --json が要ります: cargo install --path ."))
           : !this.data
             ? note("loading…", t.dim)
-            : !rows.length
+            : !commits.length
               ? note("no commits", t.muted)
               : v_flex()
                   .size_full()
                   .overflow_y_scrollbar()
-                  .children(rows.map((r) => this.row(r, t, width))),
+                  .children(commits.map((c) => this.row(c))),
       );
   }
 
   // tuit's row colours, from `tuit --json` (its config.toml + theme), so the
   // pane and the TUI look the same. Only the pane's background stays herdr's.
-  row(r, t, width) {
+  row(c) {
     const colors = this.data.colors, cc = this.data.cc;
-    const parsed = conventional(r.message);
+    const parsed = conventional(c.message);
     const text = (color) => div().text_color(color).whitespace_nowrap();
     const parts = parsed
       ? [
@@ -124,20 +121,13 @@ export default class TuitView extends View {
           parsed.breaking ? text(colors.diff_del).child("!") : null,
           text(colors.message).child(parsed.desc ? `: ${parsed.desc}` : ""),
         ]
-      : [text(colors.message).child(r.message)];
+      : [text(colors.message).child(c.message)];
     return h_flex()
       .px(10)
       .py(2)
       .gap(8)
       .items_center()
       .flex_shrink_0()
-      .child(
-        div()
-          .font_family(settings().font_family ?? "JetBrains Mono")
-          .text_color(t.dim)
-          .whitespace_nowrap()
-          .child(r.graph.padEnd(width, " ")),
-      )
       .child(
         h_flex()
           .flex_1()
@@ -146,9 +136,6 @@ export default class TuitView extends View {
           .text_ellipsis()
           .children(parts.filter(Boolean)),
       )
-      .when(r.refs.length > 0, (el) =>
-        el.child(div().text_color(t.accent).whitespace_nowrap().child(r.refs.join(" "))),
-      )
-      .child(text(colors.date).child(r.date));
+      .child(text(colors.date).child(c.date));
   }
 }
